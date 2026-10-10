@@ -26,13 +26,24 @@ A bar widget that is already mounted is not re-instantiated on file changes, so 
 ## Set your wallet (no JSON editing)
 
 - click "set wallet" in the bar, or right-click the widget, or press the gear in the click panel;
-- paste the 0x address and press Enter. It is validated (0x + 40 hex), stored lowercase in your Omarchy shell settings,
+- paste the 0x address and press Enter. It is validated (0x + 40 hex), stored lowercase in a per-user state file (see below),
   and everything refreshes at once;
 - "Clear" removes it again (HF, PnL, rewards, points, PUT and positions hide).
 
+## Where settings live
+
+Your wallet and your overrides are kept in a per-user file that plugin updates, removal and re-adding never touch:
+
+    $XDG_STATE_HOME/flyingtulip-ft-bar/settings.json     (default: ~/.local/state/flyingtulip-ft-bar/settings.json)
+
+It is written atomically by the wallet editor. On start the widget reads this file first, then falls back to the same
+key on the widget's entry in `shell.json`, then to the default. Values found only on the `shell.json` entry are copied into
+the file once. Delete the file to forget the wallet. (A copy of the wallet is also kept on the `shell.json` entry as a
+plain fallback, but the file wins.)
+
 ## Settings
 
-Optional, on the widget's entry in your Omarchy `shell.json`:
+Optional keys, read from the file above or from the widget's entry in your Omarchy `shell.json` (the file wins):
 
 | key | default | meaning |
 |---|---|---|

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -12,16 +13,72 @@ BarWidget {
   id: root
   moduleName: "flyingtulip.ft-bar"
 
-  // ---- settings (inline on the shell.json layout entry) --------------------
-  readonly property string wallet: String(setting("wallet", "")).trim()
+  // ---- settings ---------------------------------------------------------------
+  // Durable per-user file first (survives plugin updates, reinstalls and layout rewrites),
+  // then the inline shell.json entry, then the default. See README "Where settings live".
+  property var saved: ({})
+  property bool stateLoaded: false
+  function effective(name, fallback) {
+    var v = saved[name]
+    return v !== undefined && v !== null ? v : setting(name, fallback)
+  }
+  readonly property string wallet: String(effective("wallet", "")).trim()
   readonly property bool walletValid: Model.isAddress(wallet)
-  readonly property int pollSec: Math.max(15, Number(setting("refreshIntervalSec", 60)) || 60)
-  readonly property real hfWarn: Model.parseThreshold(setting("hfWarn", 1.40), 1.40)
-  readonly property real hfCritical: Math.min(hfWarn, Model.parseThreshold(setting("hfCritical", 1.30), 1.30))
-  readonly property int cooldownMin: Math.max(1, Number(setting("notifyCooldownMin", 30)) || 30)
-  readonly property int priceChainId: Number(setting("priceChainId", 1)) === 146 ? 146 : 1
+  readonly property int pollSec: Math.max(15, Number(effective("refreshIntervalSec", 60)) || 60)
+  readonly property real hfWarn: Model.parseThreshold(effective("hfWarn", 1.40), 1.40)
+  readonly property real hfCritical: Math.min(hfWarn, Model.parseThreshold(effective("hfCritical", 1.30), 1.30))
+  readonly property int cooldownMin: Math.max(1, Number(effective("notifyCooldownMin", 30)) || 30)
+  readonly property int priceChainId: Number(effective("priceChainId", 1)) === 146 ? 146 : 1
   // Tests set this to stub out notify-send so no real notification is shown.
   readonly property bool notificationsEnabled: setting("notificationsEnabled", true) !== false
+
+  // ---- durable state file ------------------------------------------------------
+  readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/flyingtulip-ft-bar"
+  readonly property var persistedKeys: ["wallet", "refreshIntervalSec", "hfWarn", "hfCritical", "notifyCooldownMin", "priceChainId"]
+
+  FileView {
+    id: stateFile
+    path: root.stateDir + "/settings.json"
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var obj = {}
+      try { var p = JSON.parse(text()); if (p && typeof p === "object" && !Array.isArray(p)) obj = p } catch (e) {}
+      root.saved = obj
+      root.stateLoaded = true
+      root.migrateEntry()
+    }
+    onLoadFailed: { root.saved = ({}); root.stateLoaded = true; root.migrateEntry() }
+  }
+
+  // Merge `patch` into the saved settings and write the file atomically.
+  function writeState(patch) {
+    var next = {}
+    for (var k in saved) next[k] = saved[k]
+    for (var p in patch) next[p] = patch[p]
+    saved = next
+    Quickshell.execDetached(["mkdir", "-p", stateDir])
+    writeTimer.restart()
+  }
+  Timer { id: writeTimer; interval: 150; onTriggered: stateFile.setText(JSON.stringify(root.saved, null, 2) + "\n") }
+
+  // One-time migration: values still only on the shell.json entry are copied into the file.
+  function migrateEntry() {
+    if (!stateLoaded) return
+    var patch = {}, any = false
+    for (var i = 0; i < persistedKeys.length; i++) {
+      var k = persistedKeys[i]
+      if (saved[k] !== undefined) continue
+      var v = settings ? settings[k] : undefined
+      if (v === undefined || v === null || v === "") continue
+      patch[k] = v; any = true
+    }
+    if (any) writeState(patch)
+  }
+  onSettingsChanged: migrateEntry()
+  Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", stateDir])
 
   // ---- data (each source keeps its last good value + timestamp) ------------
   property var price: null
@@ -259,14 +316,14 @@ BarWidget {
       next = Model.normalizeWallet(text)
       if (next === "") { editError = "Not a valid address (0x + 40 hex characters)"; return false }
     }
-    if (!bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") {
-      editError = "This shell cannot save plugin settings"; return false
-    }
-    var entry = currentEntry()
-    entry.id = moduleName
-    entry.wallet = next
-    if (!bar.shell.updateEntryInline(moduleName, entry) && next !== wallet) {
-      editError = "Could not save to shell.json"; return false
+    // Durable file first: this is what survives updates and reinstalls.
+    writeState({ wallet: next })
+    // Best effort: keep the shell.json entry in sync too (a plain fallback copy).
+    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function") {
+      var entry = currentEntry()
+      entry.id = moduleName
+      entry.wallet = next
+      bar.shell.updateEntryInline(moduleName, entry)
     }
     editError = ""
     mode = ""
