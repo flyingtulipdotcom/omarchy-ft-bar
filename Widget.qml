@@ -7,8 +7,8 @@ import "Model.js" as Model
 
 // Flying Tulip bar widget: FT market price, 24h application fees, wallet HF
 // (lowest across chains with debt), total PnL, total FT earned and ftPUT gain.
-// Left click on a segment opens its page on flyingtulip.com; the logo (or the pill
-// padding) toggles the info panel with charts. Right click: wallet editor.
+// Left click anywhere on the bar widget toggles the info panel (the bar itself opens no links);
+// every flyingtulip.com link lives inside the panel. Right click: wallet editor.
 // Data: public https://api.flyingtulip.com only. See README.md.
 BarWidget {
   id: root
@@ -370,7 +370,6 @@ BarWidget {
   // Open a public flyingtulip.com page in the default browser; the panel closes after.
   function openUrl(url) { Qt.openUrlExternally(url); if (mode === "info") close() }
   readonly property string marketLink: Model.marketUrl("FT-ftUSD", priceChainId)
-  function openStats() { openUrl(Model.PAGES.fees) }
   function lastUpdate() { return Math.max(priceAt, feesAt, accountAt) }
   function ago(ts) {
     if (ts === 0) return "never"
@@ -387,54 +386,32 @@ BarWidget {
   implicitWidth: pill.width
   implicitHeight: barSize
 
-  // One segment: faint tulip label + value. Left click opens `url`; right click is the
-  // wallet editor and middle click a refresh, as on the rest of the pill.
-  component Seg: Item {
-    id: seg
+  // One segment: faint tulip label + value.
+  component Seg: Row {
     property string label: ""
     property string value: ""
     property color valueColor: root.fg
     property bool dim: false
-    property string url: Model.SITE
-    implicitWidth: segRow.implicitWidth
-    implicitHeight: segRow.implicitHeight
-    Row {
-      id: segRow
-      spacing: 4
-      opacity: seg.dim ? 0.5 : (segMa.containsMouse ? 1 : 0.92)
-      Behavior on opacity { NumberAnimation { duration: 200 } }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: seg.label
-        visible: seg.label !== ""
-        color: segMa.containsMouse ? root.cTulip300 : root.cTulip400
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: Style.font.bodySmall
-      }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: seg.value
-        color: seg.valueColor
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: Style.font.body
-        font.bold: true
-        font.underline: segMa.containsMouse
-      }
+    spacing: 4
+    opacity: dim ? 0.5 : 1
+    Behavior on opacity { NumberAnimation { duration: 200 } }
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: parent.label
+      visible: parent.label !== ""
+      color: root.cTulip400
+      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+      font.pixelSize: Style.font.bodySmall
     }
-    MouseArea {
-      id: segMa
-      anchors.fill: parent
-      anchors.margins: -3
-      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-      cursorShape: Qt.PointingHandCursor
-      hoverEnabled: true
-      onClicked: function (m) {
-        if (m.button === Qt.RightButton) root.mode === "edit" ? root.close() : root.openEditor()
-        else if (m.button === Qt.MiddleButton) root.refresh()
-        else Qt.openUrlExternally(seg.url)
-      }
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: parent.value
+      color: parent.valueColor
+      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+      font.pixelSize: Style.font.body
+      font.bold: true
     }
   }
 
@@ -444,11 +421,10 @@ BarWidget {
     height: Math.max(18, root.barSize - 8)
     width: row.implicitWidth + 16
     radius: height / 2
-    color: root.mode !== "" ? Qt.rgba(117 / 255, 89 / 255, 255, 0.22) : (pillHover.hovered ? Qt.rgba(117 / 255, 89 / 255, 255, 0.14) : "transparent")
-    border.width: root.mode !== "" || pillHover.hovered ? 1 : 0
+    color: root.mode !== "" ? Qt.rgba(117 / 255, 89 / 255, 255, 0.22) : (hoverArea.containsMouse ? Qt.rgba(117 / 255, 89 / 255, 255, 0.14) : "transparent")
+    border.width: root.mode !== "" || hoverArea.containsMouse ? 1 : 0
     border.color: Qt.rgba(117 / 255, 89 / 255, 255, 0.45)
     Behavior on color { ColorAnimation { duration: 140 } }
-    HoverHandler { id: pillHover }
 
     Grid {
       id: row
@@ -458,49 +434,34 @@ BarWidget {
       columns: root.vertical ? 1 : 8
       spacing: Style.space(10)
 
-      // The logo toggles the info panel (the pill padding does too, see pillArea).
       Item {
         width: Style.bar.iconCanvas
         height: Style.font.body + 4
         TulipGlyph { anchors.centerIn: parent; size: Style.bar.iconCanvas; color: root.cTulip }
-        MouseArea {
-          anchors.fill: parent
-          anchors.margins: -3
-          acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-          cursorShape: Qt.PointingHandCursor
-          onClicked: function (m) {
-            if (m.button === Qt.RightButton) root.mode === "edit" ? root.close() : root.openEditor()
-            else if (m.button === Qt.MiddleButton) root.refresh()
-            else root.mode === "info" ? root.close() : root.openInfo()
-          }
-        }
       }
-      Seg { url: root.marketLink; label: ""; value: Model.fmtPrice(root.price ? root.price.price : NaN); dim: root.isStale(root.priceAt) }
-      Seg { url: Model.PAGES.fees; label: "fees"; value: Model.fmtUsd(root.fees ? root.fees.period24h : NaN); dim: root.isStale(root.feesAt) }
-      Item {
+      Seg { label: ""; value: Model.fmtPrice(root.price ? root.price.price : NaN); dim: root.isStale(root.priceAt) }
+      Seg { label: "fees"; value: Model.fmtUsd(root.fees ? root.fees.period24h : NaN); dim: root.isStale(root.feesAt) }
+      Seg {
         visible: !root.walletValid
-        implicitWidth: setSeg.implicitWidth
-        implicitHeight: setSeg.implicitHeight
-        // Not a site page: opens the wallet editor.
-        Seg { id: setSeg; label: ""; value: "set wallet"; valueColor: root.cAmber; url: "" }
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.LeftButton; onClicked: root.openEditor() }
+        label: ""
+        value: "set wallet"
+        valueColor: root.cAmber
       }
-      Seg { url: Model.PAGES.health; visible: root.walletValid; label: "HF"; value: root.accountAt === 0 ? "—" : (root.lowest ? Model.fmtHf(root.lowest.hf) : "∞"); valueColor: root.hfColor; dim: root.isStale(root.accountAt) }
-      Seg { url: Model.PAGES.portfolio; visible: root.walletValid; label: "PnL"; value: Model.fmtSignedUsd(root.totalPnl); valueColor: root.deltaColor(root.totalPnl); dim: root.isStale(root.accountAt) }
-      Seg { url: Model.PAGES.rewards; visible: root.walletValid; label: "FT earned"; value: Model.fmtFt(root.rewards ? root.rewards.totalFt : NaN); dim: root.isStale(root.rewardsAt) }
-      Seg { url: Model.PAGES.points; visible: root.walletValid; label: "pts"; value: Model.fmtPoints(root.points ? root.points.total : NaN); dim: root.isStale(root.pointsAt) }
-      Seg { url: Model.PAGES.put; visible: root.showPut; label: "PUT"; value: root.putGain ? Model.fmtPct(root.putGain.gainPct) : "—"; valueColor: root.putGain ? root.deltaColor(root.putGain.gainUsd) : root.fg; dim: root.isStale(root.putsAt) || root.isStale(root.priceAt) }
+      Seg { visible: root.walletValid; label: "HF"; value: root.accountAt === 0 ? "—" : (root.lowest ? Model.fmtHf(root.lowest.hf) : "∞"); valueColor: root.hfColor; dim: root.isStale(root.accountAt) }
+      Seg { visible: root.walletValid; label: "PnL"; value: Model.fmtSignedUsd(root.totalPnl); valueColor: root.deltaColor(root.totalPnl); dim: root.isStale(root.accountAt) }
+      Seg { visible: root.walletValid; label: "FT earned"; value: Model.fmtFt(root.rewards ? root.rewards.totalFt : NaN); dim: root.isStale(root.rewardsAt) }
+      Seg { visible: root.walletValid; label: "pts"; value: Model.fmtPoints(root.points ? root.points.total : NaN); dim: root.isStale(root.pointsAt) }
+      Seg { visible: root.showPut; label: "PUT"; value: root.putGain ? Model.fmtPct(root.putGain.gainPct) : "—"; valueColor: root.putGain ? root.deltaColor(root.putGain.gainUsd) : root.fg; dim: root.isStale(root.putsAt) || root.isStale(root.priceAt) }
     }
   }
 
-  // Pill padding and gaps (the segments and logo handle their own clicks, drawn above
-  // this): left click toggles the info panel. Right click: wallet editor. Middle: refresh.
+  // Left click: info panel. Right click: wallet editor. Middle click: refresh.
   MouseArea {
-    id: pillArea
+    id: hoverArea
     anchors.fill: parent
-    z: -1
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
     cursorShape: Qt.PointingHandCursor
+    hoverEnabled: true
     onClicked: function (m) {
       if (m.button === Qt.RightButton) root.mode === "edit" ? root.close() : root.openEditor()
       else if (m.button === Qt.MiddleButton) root.refresh()
