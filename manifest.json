@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "flyingtulip.ft-bar",
+  "name": "Flying Tulip",
+  "version": "1.0.0",
+  "author": "Flying Tulip",
+  "license": "MIT",
+  "description": "Flying Tulip in the Omarchy bar: FT market price, 24h application fees and, for a wallet you set, health factor with liquidation alerts, PnL, rewards, points and ftPUT gain. Public API only.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "Flying Tulip",
+    "description": "FT price, 24h app fees, wallet HF and PnL from the public api.flyingtulip.com.",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "wallet": "",
+      "refreshIntervalSec": 60,
+      "hfWarn": "1.40",
+      "hfCritical": "1.30",
+      "notifyCooldownMin": 30,
+      "priceChainId": 1
+    },
+    "schema": [
+      { "key": "wallet", "type": "string", "label": "Wallet address (0x...)", "defaultValue": "", "description": "Public address to track. Empty hides HF and PnL." },
+      { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 15, "max": 3600, "step": 15, "defaultValue": 60 },
+      { "key": "hfWarn", "type": "string", "label": "HF warning threshold", "defaultValue": "1.40", "description": "Liquidation starts below 1.25. Warn notification at or below this HF." },
+      { "key": "hfCritical", "type": "string", "label": "HF critical threshold", "defaultValue": "1.30", "description": "Critical notification at or below this HF. Keep it above 1.25." },
+      { "key": "notifyCooldownMin", "type": "integer", "label": "Notification cooldown (minutes)", "min": 1, "max": 1440, "step": 5, "defaultValue": 30 },
+      { "key": "priceChainId", "type": "integer", "label": "FT price chain id", "min": 1, "max": 146, "step": 1, "defaultValue": 1, "description": "Chain whose FT-ftUSD market mark is shown: 1 Ethereum or 146 Sonic." }
+    ]
+  }
+}
