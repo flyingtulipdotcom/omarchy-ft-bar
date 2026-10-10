@@ -57,8 +57,27 @@ Optional keys, read from the file above or from the widget's entry in your Omarc
 
 ## Interactions
 
-left click: info panel (gear = wallet, refresh icon, "Open dashboard" opens flyingtulip.com) ·
-right click: wallet editor · middle click: refresh.
+Every element opens its page on flyingtulip.com (default browser). Right click anywhere on the
+widget is the wallet editor, middle click a refresh.
+
+On the bar:
+
+| Segment | Opens |
+| --- | --- |
+| logo (and the pill padding) | toggles the info panel |
+| FT price | `/trade/?symbol=FT-ftUSD&chainId=<priceChainId>&marketType=spot` |
+| fees | `/statistics/` |
+| HF | `/lend/dashboard/` |
+| PnL | `/trade/portfolio/` |
+| FT earned | `/rewards/` |
+| pts | `/rewards/leaderboard/` |
+| PUT | `/allocation/positions/` |
+
+In the panel: the header logo and title and the footer open `flyingtulip.com`; every stat, chart and
+card opens the same page as its bar segment (the fee breakdown opens statistics, each health factor row
+the lend dashboard, FT earned charts the rewards page, points positions `/rewards/my-activity/`); each
+position row opens that market's trade page on its own chain. The gear and refresh buttons and the
+range pills keep their actions.
 
 ## What each number is
 

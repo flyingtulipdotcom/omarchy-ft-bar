@@ -9,13 +9,22 @@ Rectangle {
   property color stroke: Qt.rgba(76 / 255, 76 / 255, 82 / 255, 0.5)
   property color hoverStroke: Qt.rgba(117 / 255, 89 / 255, 255, 0.55)
   property bool hoverable: false
+  // When set, the whole card opens this page on click (controls inside still win).
+  property string url: ""
   implicitHeight: holder.childrenRect.height + pad * 2
   radius: 12
   color: fill
   border.width: 1
-  border.color: hoverable && hover.hovered ? hoverStroke : stroke
+  border.color: (hoverable || url !== "") && hover.hovered ? hoverStroke : stroke
   Behavior on border.color { ColorAnimation { duration: 140 } }
-  HoverHandler { id: hover; enabled: root.hoverable }
+  HoverHandler { id: hover; enabled: root.hoverable || root.url !== "" }
+  // Under the content holder, so buttons and pills inside keep their own clicks.
+  MouseArea {
+    anchors.fill: parent
+    enabled: root.url !== ""
+    cursorShape: root.url !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+    onClicked: Qt.openUrlExternally(root.url)
+  }
   Item {
     id: holder
     x: root.pad

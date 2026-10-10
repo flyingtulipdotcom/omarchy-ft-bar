@@ -77,8 +77,11 @@ Item {
       width: parent.width
       height: 34
       Row {
+        id: headLink
         anchors.verticalCenter: parent.verticalCenter
         spacing: 9
+        opacity: headMa.containsMouse ? 0.8 : 1
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         Rectangle {
           width: 30; height: 30; radius: 9
           color: "#0c091a"
@@ -92,6 +95,13 @@ Item {
           Text { textFormat: Text.PlainText; text: "Flying Tulip"; color: h.cText; font.family: root.fam; font.pixelSize: 13; font.weight: Font.DemiBold }
           Text { textFormat: Text.PlainText; text: h.walletValid ? Model.shortAddr(h.wallet) : "Market, fees and your account"; color: h.cFaint; font.family: root.fam; font.pixelSize: 10 }
         }
+      }
+      MouseArea {
+        id: headMa
+        anchors.fill: headLink
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: h.openUrl(Model.SITE)
       }
       Row {
         anchors.right: parent.right
@@ -109,9 +119,10 @@ Item {
       Row {
         width: parent.width
         spacing: 8
-        Stat { width: (parent.width - 16) / 3; label: "Fees last 24h"; value: h.fees ? Model.fmtUsd(h.fees.period24h) : "—"; valueColor: h.cText; labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam }
+        Stat { width: (parent.width - 16) / 3; url: Model.PAGES.fees; label: "Fees last 24h"; value: h.fees ? Model.fmtUsd(h.fees.period24h) : "—"; valueColor: h.cText; labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam }
         Stat {
           width: (parent.width - 16) / 3
+          url: h.marketLink
           label: "FT price"
           value: h.price ? Model.fmtPrice(h.price.price) : "—"
           sub: h.price && isFinite(h.price.changePct24h) ? Model.fmtPct(h.price.changePct24h) + " 24h" : ""
@@ -120,6 +131,7 @@ Item {
         }
         Stat {
           width: (parent.width - 16) / 3
+          url: Model.PAGES.fees
           label: "Day / day"
           readonly property real d: Model.feesDayOverDay(h.feesSeries)
           value: isFinite(d) ? Model.fmtPct(d) : "—"
@@ -132,7 +144,7 @@ Item {
     // ---- daily fees
     Card {
       width: parent.width
-      hoverable: true
+      url: Model.PAGES.fees
       Column {
         width: parent.width
         spacing: 8
@@ -187,7 +199,7 @@ Item {
     // ---- FT market price
     Card {
       width: parent.width
-      hoverable: true
+      url: h.marketLink
       Column {
         width: parent.width
         spacing: 8
@@ -212,6 +224,7 @@ Item {
     Card {
       visible: !h.walletValid
       width: parent.width
+      url: Model.SITE
       Row {
         width: parent.width
         spacing: 12
@@ -241,6 +254,7 @@ Item {
 
       Card {
         width: parent.width
+        url: Model.PAGES.health
         Column {
           width: parent.width
           spacing: 8
@@ -273,7 +287,7 @@ Item {
         spacing: 10
         readonly property real cw: (width - 10) / 2
         Card {
-          width: parent.cw; hoverable: true
+          width: parent.cw; url: Model.PAGES.portfolio
           Stat {
             width: parent.width
             label: "PnL (unrealized)"
@@ -284,7 +298,7 @@ Item {
           }
         }
         Card {
-          width: parent.cw; hoverable: true
+          width: parent.cw; url: Model.PAGES.rewards
           Stat {
             width: parent.width
             label: "FT earned"
@@ -295,7 +309,7 @@ Item {
           }
         }
         Card {
-          width: parent.cw; hoverable: true
+          width: parent.cw; url: Model.PAGES.points
           Stat {
             width: parent.width
             label: "Points"
@@ -306,7 +320,7 @@ Item {
           }
         }
         Card {
-          width: parent.cw; hoverable: true
+          width: parent.cw; url: Model.PAGES.put
           visible: h.putGain !== null
           Stat {
             width: parent.width
@@ -322,7 +336,7 @@ Item {
 
       Card {
         width: parent.width
-        hoverable: true
+        url: Model.PAGES.rewards
         Column {
           width: parent.width
           spacing: 8
@@ -362,7 +376,7 @@ Item {
 
       Card {
         width: parent.width
-        hoverable: true
+        url: Model.PAGES.rewards
         visible: h.rewardsHist !== null && h.rewardsHist.length > 0
         Column {
           width: parent.width
@@ -385,6 +399,7 @@ Item {
 
       Card {
         width: parent.width
+        url: Model.PAGES.portfolio
         Column {
           width: parent.width
           spacing: 8
@@ -417,7 +432,7 @@ Item {
                   radius: 9
                   color: rowMa.containsMouse ? Qt.rgba(117 / 255, 89 / 255, 255, 0.10) : Qt.rgba(1, 1, 1, 0.025)
                   Behavior on color { ColorAnimation { duration: 120 } }
-                  MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true }
+                  MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Qt.openUrlExternally(Model.marketUrl(modelData.market || (modelData.symbol + "-ftUSD"), modelData.chainId)) }
                   Rectangle {
                     id: badge
                     x: 8; anchors.verticalCenter: parent.verticalCenter
@@ -476,6 +491,7 @@ Item {
 
       Card {
         width: parent.width
+        url: Model.PAGES.pointsActivity
         visible: h.pointsRows.length > 0
         Column {
           width: parent.width
@@ -495,6 +511,7 @@ Item {
 
       Card {
         width: parent.width
+        url: Model.PAGES.put
         visible: h.puts !== null
         Column {
           width: parent.width
@@ -519,7 +536,16 @@ Item {
     Item {
       width: parent.width
       height: 20
+      MouseArea {
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        width: upd.implicitWidth
+        height: parent.height
+        cursorShape: Qt.PointingHandCursor
+        onClicked: h.openUrl(Model.SITE)
+      }
       Text {
+        id: upd
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
@@ -533,12 +559,12 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
-        text: "Open dashboard →"
+        text: "Open flyingtulip.com →"
         color: dashMa.containsMouse ? h.cTulip300 : h.cTulip400
         font.family: root.fam
         font.pixelSize: 11
         Behavior on color { ColorAnimation { duration: 120 } }
-        MouseArea { id: dashMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: h.openStats() }
+        MouseArea { id: dashMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: h.openUrl(Model.SITE) }
       }
     }
   }

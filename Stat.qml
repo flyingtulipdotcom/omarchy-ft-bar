@@ -1,8 +1,12 @@
 import QtQuick
 
 // Stat: tiny uppercase label over a bold tabular value (+ optional sub line).
-Column {
+// With a url set it is a link: pointer cursor, hover underline, click signal.
+Item {
   id: root
+  implicitHeight: col.implicitHeight
+  height: implicitHeight
+  property string url: ""
   property string label: ""
   property string value: ""
   property string sub: ""
@@ -11,7 +15,10 @@ Column {
   property color subColor: "#a1a1aa"
   property int valueSize: 16
   property string fontFamilies: "Noto Sans"
-  spacing: 2
+  Column {
+    id: col
+    width: root.width
+    spacing: 2
   Text {
     text: root.label.toUpperCase()
     textFormat: Text.PlainText
@@ -42,4 +49,15 @@ Column {
     width: root.width
     elide: Text.ElideRight
   }
+  }
+  MouseArea {
+    id: statMa
+    anchors.fill: parent
+    enabled: root.url !== ""
+    hoverEnabled: true
+    cursorShape: root.url !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+    onClicked: Qt.openUrlExternally(root.url)
+  }
+  opacity: root.url !== "" && statMa.containsMouse ? 0.8 : 1
+  Behavior on opacity { NumberAnimation { duration: 120 } }
 }

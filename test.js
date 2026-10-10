@@ -62,3 +62,10 @@ assert.equal(rs.length, 4); assert.equal(Math.round(rs[3].earned), 130)
 const dg = M.dailyGains(rs, "earned"); assert.equal(dg.length, 3); assert.equal(Math.round(dg[1].gain), 10)
 assert.equal(M.parseRewardsSeries({ data: { points: [] } }), null)
 console.log("rewards series ok")
+
+// ---- page links: every element opens a real flyingtulip.com page
+assert.equal(M.marketUrl("FT-ftUSD", 1), "https://flyingtulip.com/trade/?symbol=FT-ftUSD&chainId=1&marketType=spot")
+assert.equal(M.marketUrl("wS-ftUSD", 146), "https://flyingtulip.com/trade/?symbol=wS-ftUSD&chainId=146&marketType=spot")
+assert.equal(M.marketUrl("", NaN), "https://flyingtulip.com/trade/?symbol=FT-ftUSD&marketType=spot")
+for (const k in M.PAGES) assert(/^https:\/\/flyingtulip\.com\/([a-z-]+\/)*$/.test(M.PAGES[k]), k)
+console.log("links ok")

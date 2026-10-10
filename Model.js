@@ -2,7 +2,27 @@
 // can be unit-tested with bun (see test.js).
 
 var API = "https://api.flyingtulip.com"
-var STATS_URL = "https://flyingtulip.com/statistics/"
+var SITE = "https://flyingtulip.com/"
+var STATS_URL = SITE + "statistics/"
+// Public pages every element of the widget links to (trailing slash: the site
+// serves these directly and keeps the query string).
+var PAGES = {
+  home: SITE,
+  fees: SITE + "statistics/",
+  health: SITE + "lend/dashboard/",
+  portfolio: SITE + "trade/portfolio/",
+  rewards: SITE + "rewards/",
+  points: SITE + "rewards/leaderboard/",
+  pointsActivity: SITE + "rewards/my-activity/",
+  put: SITE + "allocation/positions/"
+}
+// Spot market page for a symbol such as "FT-ftUSD" on a chain id.
+function marketUrl(symbol, chainId) {
+  var q = "symbol=" + encodeURIComponent(String(symbol || "FT-ftUSD"))
+  var c = Number(chainId)
+  if (isFinite(c) && c > 0) q += "&chainId=" + Math.floor(c)
+  return SITE + "trade/?" + q + "&marketType=spot"
+}
 // Engine liquidation floor (marginHfTargetBps 12500). Used only as a fallback
 // when /mm/lend does not carry hfLiquidationThreshold.
 var DEFAULT_LIQ_HF = 1.25
@@ -477,6 +497,7 @@ function parseThreshold(v, fallback) {
 }
 
 if (typeof module !== "undefined") module.exports = {
+  SITE: SITE, PAGES: PAGES, marketUrl: marketUrl,
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
   mergeChains: mergeChains, lowestHf: lowestHf, levelFor: levelFor, decideNotify: decideNotify,
   notifyText: notifyText, fmtUsd: fmtUsd, fmtSignedUsd: fmtSignedUsd, fmtPrice: fmtPrice, fmtHf: fmtHf,
