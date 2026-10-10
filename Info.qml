@@ -31,6 +31,20 @@ Item {
     font.pixelSize: 11
     elide: Text.ElideRight
   }
+  component Pill: Rectangle {
+    id: pill
+    property string text: ""
+    property bool selected: false
+    signal clicked()
+    width: pt.implicitWidth + 20; height: 24; radius: 12
+    color: selected ? Qt.rgba(117 / 255, 89 / 255, 255, 0.22) : (pma.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
+    border.width: 1
+    border.color: selected ? h.cTulip : h.cBorder
+    Behavior on color { ColorAnimation { duration: 120 } }
+    Behavior on border.color { ColorAnimation { duration: 120 } }
+    Text { id: pt; anchors.centerIn: parent; textFormat: Text.PlainText; text: pill.text; color: pill.selected ? h.cTulip300 : h.cSub; font.family: root.fam; font.pixelSize: 11; font.weight: pill.selected ? Font.DemiBold : Font.Normal }
+    MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.clicked() }
+  }
   component IconBtn: Rectangle {
     id: btn
     property string glyph: ""
@@ -309,7 +323,47 @@ Item {
       Card {
         width: parent.width
         hoverable: true
-        visible: h.rewardsHist !== null
+        Column {
+          width: parent.width
+          spacing: 8
+          Row {
+            width: parent.width
+            Cap { text: "FT earned over time"; width: parent.width - 70 }
+            Body { text: "all chains"; font.pixelSize: 9; horizontalAlignment: Text.AlignRight; width: 70; color: h.cFaint }
+          }
+          Row {
+            spacing: 6
+            Pill { text: "Total earned"; selected: h.histSeries === "earned"; onClicked: h.histSeries = "earned" }
+            Pill { text: "Claimed"; selected: h.histSeries === "claimed"; onClicked: h.histSeries = "claimed" }
+          }
+          LineChart {
+            width: parent.width
+            height: 96
+            visible: h.rewardsSeries !== null && h.rewardsSeries.length > 1
+            values: h.rewardsSeries ? h.rewardsSeries.map(function (d) { return d[h.histSeries] }) : []
+            lineColor: h.histSeries === "earned" ? h.cTulip : "#249c91"
+            textColor: h.cFaint
+            fontFamilies: root.fam
+            formatValue: Model.fmtFt
+            startLabel: h.rewardsSeries ? h.rewardsSeries[0].date.slice(5) : ""
+            endLabel: h.rewardsSeries ? h.rewardsSeries[h.rewardsSeries.length - 1].date.slice(5) : ""
+          }
+          Body { visible: h.rewardsSeries === null; text: "loading…"; color: h.cFaint }
+          Body { visible: h.rewardsSeries !== null && h.rewardsSeries.length <= 1; text: "Not enough history yet."; color: h.cFaint }
+          Row {
+            spacing: 6
+            Repeater {
+              model: ["7d", "30d", "90d", "all"]
+              Pill { text: modelData === "all" ? "All" : modelData; selected: h.histRange === modelData; onClicked: h.setHistRange(modelData) }
+            }
+          }
+        }
+      }
+
+      Card {
+        width: parent.width
+        hoverable: true
+        visible: h.rewardsHist !== null && h.rewardsHist.length > 0
         Column {
           width: parent.width
           spacing: 8

@@ -59,7 +59,7 @@ right click: wallet editor · middle click: refresh.
   your thresholds.
 - **PnL**: sum of `unrealizedPnl` from `/mm/spot/account/summary` across chains.
 - **FT earned**: sftUSD yield (claimed + pending) plus Lend FT rewards (received + pending), summed over chains
-  (`/account/dashboard?view=rewards`), with daily bars from `/account/rewards/history`.
+  (`/account/dashboard?view=rewards`), with a cumulative "FT earned over time" line (all chains, ranges 7d / 30d / 90d / all, Total earned or Claimed) and daily bars, both from `/account/rewards/history?address=&range=`.
 - **Points**: `/points` totals, rank from `/points/leaderboard`, earning positions from `/points/breakdown`.
 - **ftPUT gain**: from `/tge/ftPUT/user/<wallet>`. cost = sum(current_capital x strike); value =
   (current_ft + withdrawn_ft) x FT market price; gain = value - cost, also shown as a percentage. Hidden with no PUTs.

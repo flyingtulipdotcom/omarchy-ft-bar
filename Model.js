@@ -335,6 +335,37 @@ function feesDayOverDay(series) {
   return prev > 0 ? (last - prev) / prev * 100 : NaN
 }
 
+// GET /account/rewards/history?address=&range=<7d|30d|90d|all> -> cumulative FT earned
+// across all chains: [{date, earned, claimed}] at UTC day ends (partial today ignored).
+function parseRewardsSeries(body, nowSec) {
+  var pts = body && body.data && body.data.points
+  if (!pts || !pts.length) return null
+  var DAY = 86400
+  var today = Math.floor((nowSec || Date.now() / 1000) / DAY) * DAY
+  var rows = []
+  for (var i = 0; i < pts.length; i++) {
+    var ts = Number(pts[i].timestampUnixSeconds)
+    if (ts >= today || ts % DAY !== DAY - 1) continue
+    var e = rawUnits(pts[i].totalEarnedFtRaw, 18)
+    var c = rawUnits(pts[i].claimedFtRaw, 18)
+    rows.push({ ts: ts, date: new Date(ts * 1000).toISOString().slice(0, 10), earned: e, claimed: isFinite(c) ? c : 0 })
+  }
+  rows.sort(function (a, b) { return a.ts - b.ts })
+  var out = rows.filter(function (r) { return isFinite(r.earned) })
+  return out.length ? out : null
+}
+
+// Per-day FT gained from a cumulative series (key "earned" or "claimed").
+function dailyGains(series, key) {
+  var out = []
+  if (!series) return out
+  for (var i = 1; i < series.length; i++) {
+    if (series[i].ts - series[i - 1].ts !== 86400) continue
+    out.push({ date: series[i].date, gain: Math.max(0, series[i][key] - series[i - 1][key]) })
+  }
+  return out
+}
+
 // GET /account/rewards/history?address=&range=30d.
 // Points are cumulative day-end samples (UTC); daily FT earned = difference of
 // consecutive days. Today's partial sample is ignored.
@@ -449,5 +480,5 @@ if (typeof module !== "undefined") module.exports = {
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
   mergeChains: mergeChains, lowestHf: lowestHf, levelFor: levelFor, decideNotify: decideNotify,
   notifyText: notifyText, fmtUsd: fmtUsd, fmtSignedUsd: fmtSignedUsd, fmtPrice: fmtPrice, fmtHf: fmtHf,
-  parsePositions: parsePositions, sortPositions: sortPositions, fmtSize: fmtSize, feesDayOverDay: feesDayOverDay, parseRewardsHistory: parseRewardsHistory, parsePoints: parsePoints, parsePointsBreakdown: parsePointsBreakdown, rankInPage: rankInPage, fmtPoints: fmtPoints, parseFeesSeries: parseFeesSeries, parseKlines: parseKlines, shortAddr: shortAddr, parsePuts: parsePuts, putGain: putGain, fmtPct: fmtPct, normalizeWallet: normalizeWallet, rawUnits: rawUnits, parseRewards: parseRewards, fmtFt: fmtFt, isAddress: isAddress, parseThreshold: parseThreshold
+  parsePositions: parsePositions, sortPositions: sortPositions, fmtSize: fmtSize, feesDayOverDay: feesDayOverDay, parseRewardsHistory: parseRewardsHistory, parseRewardsSeries: parseRewardsSeries, dailyGains: dailyGains, parsePoints: parsePoints, parsePointsBreakdown: parsePointsBreakdown, rankInPage: rankInPage, fmtPoints: fmtPoints, parseFeesSeries: parseFeesSeries, parseKlines: parseKlines, shortAddr: shortAddr, parsePuts: parsePuts, putGain: putGain, fmtPct: fmtPct, normalizeWallet: normalizeWallet, rawUnits: rawUnits, parseRewards: parseRewards, fmtFt: fmtFt, isAddress: isAddress, parseThreshold: parseThreshold
 }

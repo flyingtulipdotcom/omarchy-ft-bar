@@ -57,3 +57,8 @@ const pr = M.parsePositions([{ positionId: "x", chainId: 146, network: "Sonic", 
 assert.equal(pr.length, 1); assert.equal(pr[0].side, "long"); assert.equal(M.fmtSize(pr[0].size), "1.01M"); assert(Math.abs(pr[0].valueUsd - 1007088.24 * 0.045) < 1)
 assert.deepEqual(M.parsePositions({}), [])
 console.log("positions ok")
+const rs = M.parseRewardsSeries({ data: { points: [0, 1, 2, 3].map(i => ({ timestampUnixSeconds: base + i * D + D - 1, totalEarnedFtRaw: String(BigInt(100 + i * 10) * 10n ** 18n), claimedFtRaw: "0" })) } }, base + 10 * D)
+assert.equal(rs.length, 4); assert.equal(Math.round(rs[3].earned), 130)
+const dg = M.dailyGains(rs, "earned"); assert.equal(dg.length, 3); assert.equal(Math.round(dg[1].gain), 10)
+assert.equal(M.parseRewardsSeries({ data: { points: [] } }), null)
+console.log("rewards series ok")

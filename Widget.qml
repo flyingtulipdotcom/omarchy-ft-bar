@@ -32,7 +32,10 @@ BarWidget {
   property var pnlByChain: ({})
   property var rewards: null
   property var puts: null          // null = no PUTs (or not loaded)
-  property var rewardsHist: null
+  property var rewardsSeries: null      // cumulative FT earned, all chains
+  property string histRange: "30d"       // 7d | 30d | 90d | all
+  property string histSeries: "earned"   // earned | claimed
+  readonly property var rewardsHist: rewardsSeries ? Model.dailyGains(rewardsSeries, "earned").slice(-30) : null
   property var positions: []
   property bool positionsLoaded: false
   property var points: null
@@ -102,6 +105,17 @@ BarWidget {
       var k = Model.parseKlines(b); if (k) klines = k
     }, function () { slowAt = 0 })
   }
+
+  // Cumulative FT earned over time (all chains) for the selected range.
+  function refreshHistory() {
+    if (!walletValid) return
+    var r = histRange, w = wallet
+    getJson("/account/rewards/history?address=" + encodeURIComponent(w) + "&range=" + r, function (b) {
+      if (r !== histRange || w !== wallet) return
+      var s = Model.parseRewardsSeries(b); if (s) rewardsSeries = s
+    }, function () {})
+  }
+  function setHistRange(r) { histRange = r; rewardsSeries = null; refreshHistory() }
 
   function refresh() {
     var gen = ++generation
@@ -186,10 +200,7 @@ BarWidget {
       }, fin)
     })(posIds[pi])
 
-    getJson("/account/rewards/history?address=" + w + "&range=30d", function (b) {
-      if (gen !== generation) return
-      var hst = Model.parseRewardsHistory(b); if (hst) rewardsHist = hst
-    }, function () {})
+    refreshHistory()
 
     // ftPUT positions. No positions -> puts = null -> hidden.
     getJson("/tge/ftPUT/user/" + w, function (b) {
@@ -277,7 +288,7 @@ BarWidget {
   onWalletChanged: {
     points = null; pointsRows = []; rank = null; pointsAt = 0; rankAt = 0
     notifyState = ({ level: 0, last: {} }); chains = []; pnlByChain = ({}); rewards = null; puts = null
-    rewardsHist = null
+    rewardsSeries = null
     positions = []; positionsLoaded = false
     accountAt = 0; rewardsAt = 0; putsAt = 0
     Qt.callLater(refresh)
