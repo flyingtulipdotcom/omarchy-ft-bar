@@ -23,8 +23,17 @@ BarWidget {
     var v = saved[name]
     return v !== undefined && v !== null ? v : setting(name, fallback)
   }
-  readonly property string wallet: String(effective("wallet", "")).trim()
-  readonly property bool walletValid: Model.isAddress(wallet)
+  // Wallets to track (the saved list, plus the single "wallet" of 1.0.x). One is shown at a time: the bar and the
+  // panel follow it; every rotateSec the next one is shown, except while one is low (see the rotation timer).
+  readonly property var wallets: Model.walletList(effective("wallets", []), effective("wallet", ""))
+  property string shown: ""
+  readonly property int walletIndex: Math.max(0, wallets.indexOf(shown))
+  readonly property string wallet: wallets.length ? wallets[walletIndex] : ""
+  readonly property bool walletValid: wallet !== ""
+  readonly property int rotateSec: Math.max(10, Number(effective("rotateSec", 60)) || 60)
+  // Panel tab, kept in the state file: market | account | positions
+  readonly property string tab: ["market", "account", "positions"].indexOf(String(saved.tab)) >= 0 ? String(saved.tab) : (walletValid ? "account" : "market")
+  function setTab(t) { if (String(saved.tab) !== t) writeState({ tab: t }) }
   readonly property int pollSec: Math.max(15, Number(effective("refreshIntervalSec", 60)) || 60)
   readonly property real hfWarn: Model.parseThreshold(effective("hfWarn", 1.40), 1.40)
   readonly property real hfCritical: Math.min(hfWarn, Model.parseThreshold(effective("hfCritical", 1.30), 1.30))
@@ -35,7 +44,7 @@ BarWidget {
 
   // ---- durable state file ------------------------------------------------------
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/flyingtulip-ft-bar"
-  readonly property var persistedKeys: ["wallet", "refreshIntervalSec", "hfWarn", "hfCritical", "notifyCooldownMin", "priceChainId"]
+  readonly property var persistedKeys: ["wallets", "wallet", "rotateSec", "refreshIntervalSec", "hfWarn", "hfCritical", "notifyCooldownMin", "priceChainId"]
 
   FileView {
     id: stateFile
@@ -109,7 +118,11 @@ BarWidget {
   property double slowAt: 0
   property double now: Date.now()
   property bool lastRefreshFailed: false
-  property var notifyState: ({ level: 0, last: {} })
+  property var notifyStates: ({})  // wallet -> alert state (once per crossing, per wallet)
+  property var watchState: ({})    // hidden wallet -> {chains, at, debt, failAt, busy}: background health check
+  property var walletCache: ({})   // wallet -> its account values, swapped back in when it is shown again
+  property string lastWallet: ""
+  property double shownAt: 0
   property string mode: ""         // "" | "info" | "edit"
   property int generation: 0
   property var notifyLog: []       // last notifications decided (for tests/debug)
@@ -132,7 +145,8 @@ BarWidget {
   function close() { mode = "" }
   function openInfo() { mode = "info"; refreshSlow() }
   property string editText: ""
-  function openEditor() { editText = wallet; editError = ""; mode = "edit" }
+  function openEditor() { editText = ""; editIndex = -1; editError = ""; mode = "edit" }
+  property int editIndex: -1      // -1: the box adds a wallet; otherwise it replaces wallets[editIndex]
 
   // ---- networking ------------------------------------------------------------
   function getJson(path, ok, fail) {
@@ -229,6 +243,7 @@ BarWidget {
     })(ids[i])
 
     getJson("/account/dashboard?address=" + w + "&view=rewards", function (b) {
+      if (gen !== generation) return
       var r = Model.parseRewards(b); if (r) { rewards = r; rewardsAt = Date.now(); good() } else bad()
     }, bad)
 
@@ -289,20 +304,88 @@ BarWidget {
     probe(Math.floor((lo + hi) / 2))
   }
 
-  function evaluateAlerts() {
-    var res = Model.decideNotify(notifyState, lowest, {
+  // Alerts for one wallet from a fresh /mm/lend read: once per crossing, per wallet, naming the wallet when there are
+  // several. A hidden wallet that just turned low is shown at once.
+  function alertFor(w, lowestEntry) {
+    var prev = notifyStates[w] || { level: 0, last: {} }
+    var res = Model.decideNotify(prev, lowestEntry, {
       warn: hfWarn, critical: hfCritical, cooldownMs: cooldownMin * 60000
     }, Date.now())
-    notifyState = res.state
+    var next = {}
+    for (var k in notifyStates) next[k] = notifyStates[k]
+    next[w] = res.state
+    notifyStates = next
     if (res.notify) {
+      if (wallets.length > 1) res.notify.wallet = Model.shortAddr(w)
       var t = Model.notifyText(res.notify)
       notifyLog = notifyLog.concat([t.title + " | " + t.body])
       if (notificationsEnabled)
         Quickshell.execDetached(["notify-send", "-a", "Flying Tulip", "-u", t.urgency, "-i", "dialog-warning", t.title, t.body])
     }
+    if (res.state.level > (prev.level || 0) && w !== wallet) showWallet(w)
+  }
+  function evaluateAlerts() { if (walletValid) alertFor(wallet, lowest) }
+
+  // ---- several wallets ----------------------------------------------------------
+  function hasDebt(list) {
+    for (var i = 0; list && i < list.length; i++) if (list[i].debtUsd > 0.01) return true
+    return false
+  }
+  // the wallet at or below the warning line (the lowest one when several are), or ""
+  function pinnedWallet() {
+    var best = "", bestHf = Infinity
+    for (var i = 0; i < wallets.length; i++) {
+      var w = wallets[i], st = notifyStates[w]
+      if (!st || !(st.level >= 1)) continue
+      // the shown wallet's own chains; a hidden one's from its last background read, else from when it was shown
+      var hidden = (watchState[w] && watchState[w].chains) || (walletCache[w] && walletCache[w].chains) || []
+      var lo = Model.lowestHf(w === wallet ? chains : hidden)
+      if (lo && lo.hf < bestHf) { best = w; bestHf = lo.hf }
+    }
+    return best
+  }
+  function showWallet(w) { if (wallets.indexOf(w) >= 0) { shown = w; shownAt = Date.now(); rotateTimer.restart() } }
+  function nextWallet() { if (wallets.length > 1) showWallet(wallets[(walletIndex + 1) % wallets.length]) }
+
+  // Background health check of the hidden wallets: /mm/lend only, every poll while a wallet has debt, every 10 minutes
+  // otherwise, and only those (the shown wallet is read in full by refresh()).
+  function watchHidden() {
+    var t = Date.now()
+    for (var i = 0; i < wallets.length; i++) (function (w) {
+      if (w === wallet) return
+      var s = watchState[w] || {}
+      var due = !s.busy && (!s.at || t - s.at >= (s.debt ? pollSec * 1000 : 600000)) && (!s.failAt || t - s.failAt >= 60000)
+      if (!due) return
+      s.busy = true; watchState[w] = s
+      // all chains, and Monad which /mm/lend serves separately (absent until the API has it)
+      var parts = [], done = 0, failed = false
+      function fin() {
+        if (++done < 2) return
+        if (failed) { watchState[w] = { chains: s.chains, at: s.at, debt: s.debt, failAt: Date.now(), busy: false }; return }
+        var list = Model.mergeChains(parts)
+        watchState[w] = { chains: list, at: Date.now(), debt: hasDebt(list), busy: false }
+        if (wallets.indexOf(w) >= 0 && w !== wallet) alertFor(w, Model.lowestHf(list))
+      }
+      getJson("/mm/lend?user=" + encodeURIComponent(w), function (b) { parts.unshift(Model.parseLend(b)); fin() }, function () { failed = true; fin() })
+      getJson("/mm/lend?user=" + encodeURIComponent(w) + "&chainId=143", function (b) { parts.push(Model.parseLend(b)); fin() }, fin)
+    })(wallets[i])
   }
 
-  // ---- wallet editor: persisted through Omarchy's own settings writer ---------
+  // Rotation: the next wallet every rotateSec, except while one is low: that one stays (a manual switch away from it
+  // comes back at the next tick).
+  Timer {
+    id: rotateTimer
+    interval: root.rotateSec * 1000
+    running: root.wallets.length > 1
+    repeat: true
+    onTriggered: {
+      var pin = root.pinnedWallet()
+      if (pin) root.showWallet(pin)
+      else root.nextWallet()
+    }
+  }
+
+  // ---- wallet editor: persisted in the state file (and the shell.json entry as a fallback copy) ---------
   property string editError: ""
   function currentEntry() {
     var e = {}
@@ -310,29 +393,36 @@ BarWidget {
     for (var k in s) e[k] = s[k]
     return e
   }
-  function saveWallet(raw) {
-    var text = String(raw || "").trim()
-    var next = ""
-    if (text !== "") {
-      next = Model.normalizeWallet(text)
-      if (next === "") { editError = "Not a valid address (0x + 40 hex characters)"; return false }
-    }
-    // Durable file first: this is what survives updates and reinstalls.
-    writeState({ wallet: next })
+  function saveWallets(list) {
+    // Durable file first: this is what survives updates and reinstalls. "wallet" stays the first one for 1.0.x.
+    writeState({ wallets: list, wallet: list[0] || "" })
     // Best effort: keep the shell.json entry in sync too (a plain fallback copy).
     if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function") {
       var entry = currentEntry()
       entry.id = moduleName
-      entry.wallet = next
+      entry.wallets = list
+      entry.wallet = list[0] || ""
       bar.shell.updateEntryInline(moduleName, entry)
     }
     editError = ""
-    mode = ""
-    // The shell reloads settings; refresh right away without waiting for that.
-    pendingWallet = next
     Qt.callLater(refresh)
+  }
+  // The box adds a wallet (editIndex -1) or replaces the one picked for editing; several addresses can be pasted.
+  function saveWallet(raw) {
+    var p = Model.parseWallets(raw)
+    if (p.bad.length) { editError = "Not a valid address: " + String(p.bad[0]).slice(0, 24) + " (0x + 40 hex characters)"; return false }
+    if (!p.list.length) { mode = ""; return true }
+    var list = wallets.slice()
+    if (editIndex >= 0 && editIndex < list.length) list.splice(editIndex, 1, p.list[0])
+    else for (var i = 0; i < p.list.length; i++) if (list.indexOf(p.list[i]) < 0) list.push(p.list[i])
+    var dedup = Model.parseWallets(list).list
+    saveWallets(dedup)
+    showWallet(editIndex >= 0 ? p.list[0] : p.list[p.list.length - 1])
+    editText = ""; editIndex = -1
     return true
   }
+  function removeWallet(w) { saveWallets(wallets.filter(function (x) { return x !== w })) }
+  function editWallet(i) { editIndex = i; editText = wallets[i]; editError = "" }
   property string pendingWallet: ""
 
   Timer {
@@ -340,16 +430,45 @@ BarWidget {
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: { root.now = Date.now(); root.refresh() }
+    onTriggered: { root.now = Date.now(); root.refresh(); root.watchHidden() }
   }
   Timer { interval: 20000; running: true; repeat: true; onTriggered: root.now = Date.now() }
+  // the values that belong to one wallet: parked when it is hidden, brought back when it is shown again
+  readonly property var walletProps: ["chains", "pnlByChain", "rewards", "puts", "positions", "positionsLoaded", "points",
+    "pointsRows", "rank", "pointsAt", "rankAt", "accountAt", "rewardsAt", "putsAt", "rewardsSeries"]
   onWalletChanged: {
-    points = null; pointsRows = []; rank = null; pointsAt = 0; rankAt = 0
-    notifyState = ({ level: 0, last: {} }); chains = []; pnlByChain = ({}); rewards = null; puts = null
-    rewardsSeries = null
-    positions = []; positionsLoaded = false
-    accountAt = 0; rewardsAt = 0; putsAt = 0
+    generation++                                    // late answers for the previous wallet are dropped
+    if (lastWallet !== "") {
+      var c = {}
+      for (var i = 0; i < walletProps.length; i++) c[walletProps[i]] = root[walletProps[i]]
+      var wc = {}
+      for (var k in walletCache) wc[k] = walletCache[k]
+      wc[lastWallet] = c
+      walletCache = wc
+    }
+    var back = walletCache[wallet]
+    if (back) { for (var j = 0; j < walletProps.length; j++) root[walletProps[j]] = back[walletProps[j]] }
+    else {
+      points = null; pointsRows = []; rank = null; pointsAt = 0; rankAt = 0
+      chains = []; pnlByChain = ({}); rewards = null; puts = null
+      rewardsSeries = null
+      positions = []; positionsLoaded = false
+      accountAt = 0; rewardsAt = 0; putsAt = 0
+    }
+    lastWallet = wallet
     Qt.callLater(refresh)
+  }
+  onWalletsChanged: {
+    // forget the values and alert state of wallets that were removed
+    var wc = {}, ns = {}, ws = {}
+    for (var i = 0; i < wallets.length; i++) {
+      var w = wallets[i]
+      if (walletCache[w]) wc[w] = walletCache[w]
+      if (notifyStates[w]) ns[w] = notifyStates[w]
+      if (watchState[w]) ws[w] = watchState[w]
+    }
+    walletCache = wc; notifyStates = ns; watchState = ws
+    Qt.callLater(watchHidden)
   }
   onPriceChainIdChanged: { slowAt = 0; Qt.callLater(refresh) }
 
@@ -430,8 +549,8 @@ BarWidget {
       id: row
       anchors.centerIn: parent
       flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
-      rows: root.vertical ? 8 : 1
-      columns: root.vertical ? 1 : 8
+      rows: root.vertical ? 10 : 1
+      columns: root.vertical ? 1 : 10
       spacing: Style.space(10)
 
       Item {
@@ -452,17 +571,45 @@ BarWidget {
       Seg { visible: root.walletValid; label: "FT earned"; value: Model.fmtFt(root.rewards ? root.rewards.totalFt : NaN); dim: root.isStale(root.rewardsAt) }
       Seg { visible: root.walletValid; label: "pts"; value: Model.fmtPoints(root.points ? root.points.total : NaN); dim: root.isStale(root.pointsAt) }
       Seg { visible: root.showPut; label: "PUT"; value: root.putGain ? Model.fmtPct(root.putGain.gainPct) : "—"; valueColor: root.putGain ? root.deltaColor(root.putGain.gainUsd) : root.fg; dim: root.isStale(root.putsAt) || root.isStale(root.priceAt) }
+      // several wallets: which one the bar shows, then the switch icon (a click on it shows the next wallet)
+      Seg { visible: root.wallets.length > 1; label: ""; value: Model.shortAddr(root.wallet); valueColor: root.cSub }
+      Item {
+        id: switchIcon
+        visible: root.wallets.length > 1
+        width: switchText.implicitWidth + 6
+        height: Style.font.body + 4
+        Text {
+          id: switchText
+          anchors.centerIn: parent
+          textFormat: Text.PlainText
+          text: "⇄"
+          color: root.switchHovered ? "white" : root.cTulip300
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.body + 2
+          font.bold: true
+        }
+      }
     }
   }
 
-  // Left click: info panel. Right click: wallet editor. Middle click: refresh.
+  // The switch icon sits inside the bar widget, under the one MouseArea that takes every click: hit-test it here.
+  property bool switchHovered: false
+  function overSwitch(x, y) {
+    if (!switchIcon.visible) return false
+    var p = switchIcon.mapToItem(hoverArea, 0, 0)
+    return x >= p.x - 3 && x <= p.x + switchIcon.width + 3 && y >= p.y - 4 && y <= p.y + switchIcon.height + 4
+  }
+  // Left click: info panel (on the switch icon: the next wallet). Right click: wallet editor. Middle click: refresh.
   MouseArea {
     id: hoverArea
     anchors.fill: parent
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
     cursorShape: Qt.PointingHandCursor
     hoverEnabled: true
+    onPositionChanged: function (m) { root.switchHovered = root.overSwitch(m.x, m.y) }
+    onExited: root.switchHovered = false
     onClicked: function (m) {
+      if (m.button === Qt.LeftButton && root.overSwitch(m.x, m.y)) { root.nextWallet(); return }
       if (m.button === Qt.RightButton) root.mode === "edit" ? root.close() : root.openEditor()
       else if (m.button === Qt.MiddleButton) root.refresh()
       else if (!root.walletValid && root.mode === "") root.openInfo()
@@ -507,7 +654,7 @@ BarWidget {
     }
   }
 
-  // ---- wallet editor -----------------------------------------------------------
+  // ---- wallet editor: the wallet list (show, edit, remove) and a box to add one ------------------------------------
   KeyboardPanel {
     id: editPanel
     anchorItem: root
@@ -517,7 +664,7 @@ BarWidget {
     centerOnBar: true
     padding: 0
     focusTarget: editInput
-    contentWidth: editPanel.fittedContentWidth(Style.space(420))
+    contentWidth: editPanel.fittedContentWidth(Style.space(440))
     contentHeight: editPanel.fittedContentHeight(editCol.implicitHeight + 32)
 
     Rectangle {
@@ -543,8 +690,42 @@ BarWidget {
           }
           Column {
             anchors.verticalCenter: parent.verticalCenter
-            Text { textFormat: Text.PlainText; text: "Wallet address"; color: root.cText; font.family: root.fam; font.pixelSize: 13; font.weight: Font.DemiBold }
-            Text { textFormat: Text.PlainText; text: "Public address only. Saved to your Omarchy config."; color: root.cFaint; font.family: root.fam; font.pixelSize: 10 }
+            Text { textFormat: Text.PlainText; text: "Wallets"; color: root.cText; font.family: root.fam; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text { textFormat: Text.PlainText; text: "Public addresses only. With several, the bar shows them in turn."; color: root.cFaint; font.family: root.fam; font.pixelSize: 10 }
+          }
+        }
+
+        // the list: click an address to show it, the pencil to edit it, the cross to remove it
+        Repeater {
+          model: root.wallets
+          Rectangle {
+            width: editCol.width
+            height: 30
+            radius: 8
+            color: modelData === root.wallet ? Qt.rgba(117 / 255, 89 / 255, 255, 0.14) : Qt.rgba(1, 1, 1, 0.03)
+            Text {
+              x: 10; anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: (modelData === root.wallet ? "● " : "○ ") + modelData.slice(0, 10) + "…" + modelData.slice(-8) + (root.editIndex === index ? "  editing" : "")
+              color: modelData === root.wallet ? root.cTulip300 : root.cSub
+              font.family: root.nerdFont
+              font.pixelSize: 12
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showWallet(modelData) }
+            }
+            Row {
+              anchors.right: parent.right; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter
+              spacing: 4
+              Rectangle {
+                width: 24; height: 22; radius: 6; color: penMa.containsMouse ? Qt.rgba(117 / 255, 89 / 255, 255, 0.2) : "transparent"
+                Text { anchors.centerIn: parent; text: "✎"; color: root.cSub; font.pixelSize: 12 }
+                MouseArea { id: penMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.editWallet(index) }
+              }
+              Rectangle {
+                width: 24; height: 22; radius: 6; color: delMa.containsMouse ? Qt.rgba(239 / 255, 68 / 255, 68 / 255, 0.2) : "transparent"
+                Text { anchors.centerIn: parent; text: "✕"; color: delMa.containsMouse ? root.cRed : root.cSub; font.pixelSize: 11 }
+                MouseArea { id: delMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeWallet(modelData) }
+              }
+            }
           }
         }
 
@@ -580,7 +761,7 @@ BarWidget {
             anchors.leftMargin: 12
             visible: editInput.text === ""
             textFormat: Text.PlainText
-            text: "0x… paste an address (empty clears it)"
+            text: root.editIndex >= 0 ? "0x… the new address for this wallet" : "0x… paste an address to add"
             color: root.cFaint
             font.family: root.fam
             font.pixelSize: 12
@@ -603,22 +784,15 @@ BarWidget {
             width: 84; height: 32; radius: 9
             color: saveMa.containsMouse ? root.cTulip400 : root.cTulip
             Behavior on color { ColorAnimation { duration: 120 } }
-            Text { anchors.centerIn: parent; text: "Save"; color: "white"; font.family: root.fam; font.pixelSize: 12; font.weight: Font.DemiBold }
+            Text { anchors.centerIn: parent; text: root.editIndex >= 0 ? "Save" : "Add"; color: "white"; font.family: root.fam; font.pixelSize: 12; font.weight: Font.DemiBold }
             MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.saveWallet(editInput.text) }
-          }
-          Rectangle {
-            width: 84; height: 32; radius: 9; color: "transparent"
-            border.width: 1; border.color: clearMa.containsMouse ? root.cRed : root.cBorder
-            Behavior on border.color { ColorAnimation { duration: 120 } }
-            Text { anchors.centerIn: parent; text: "Clear"; color: root.cSub; font.family: root.fam; font.pixelSize: 12 }
-            MouseArea { id: clearMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.saveWallet("") }
           }
           Rectangle {
             width: 84; height: 32; radius: 9; color: "transparent"
             border.width: 1; border.color: cancelMa.containsMouse ? root.cTulip : root.cBorder
             Behavior on border.color { ColorAnimation { duration: 120 } }
-            Text { anchors.centerIn: parent; text: "Cancel"; color: root.cSub; font.family: root.fam; font.pixelSize: 12 }
-            MouseArea { id: cancelMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
+            Text { anchors.centerIn: parent; text: "Done"; color: root.cSub; font.family: root.fam; font.pixelSize: 12 }
+            MouseArea { id: cancelMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.editIndex = -1; root.close() } }
           }
         }
       }

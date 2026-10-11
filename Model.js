@@ -277,6 +277,27 @@ function normalizeWallet(s) {
   return /^0x[0-9a-fA-F]{40}$/.test(t) ? t.toLowerCase() : ""
 }
 
+// Wallet list from text ("0xA, 0xB", spaces, semicolons or new lines) or an array:
+// {list (lowercase, no duplicates, in order), bad (entries that are not addresses)}.
+function parseWallets(v) {
+  var parts = Array.isArray(v) ? v.map(String) : String(v || "").split(/[\s,;]+/)
+  var list = [], bad = []
+  for (var i = 0; i < parts.length; i++) {
+    var p = String(parts[i]).trim()
+    if (!p) continue
+    var w = normalizeWallet(p)
+    if (!w) bad.push(p)
+    else if (list.indexOf(w) < 0) list.push(w)
+  }
+  return { list: list, bad: bad }
+}
+// The wallets to track: the saved list, then the single wallet of 1.0.x when it is not in it.
+function walletList(saved, legacy) {
+  var a = parseWallets(saved).list, b = parseWallets(legacy).list
+  for (var i = 0; i < b.length; i++) if (a.indexOf(b[i]) < 0) a.push(b[i])
+  return a
+}
+
 // /fees/application?period=1m&granularity=day -> [{date,total}] (oldest first)
 function parseFeesSeries(body) {
   var s = body && body.data && body.data.series
@@ -499,13 +520,14 @@ function decideNotify(state, hfEntry, cfg, nowMs) {
   return { state: st, notify: notify }
 }
 
+// n.wallet (short address), when set, names the wallet so the notification says which of several it is about.
 function notifyText(n) {
-  var hf = n.hf.toFixed(2)
+  var hf = n.hf.toFixed(2), who = n.wallet ? n.wallet + ": " : ""
   if (n.level === 2)
     return { urgency: "critical", title: "FT account near liquidation",
-      body: n.chain + " HF " + hf + " (liquidation below " + n.liqHf.toFixed(2) + "). Add collateral or repay now." }
+      body: who + n.chain + " HF " + hf + " (liquidation below " + n.liqHf.toFixed(2) + "). Add collateral or repay now." }
   return { urgency: "normal", title: "FT account health low",
-    body: n.chain + " HF " + hf + " (liquidation below " + n.liqHf.toFixed(2) + ")." }
+    body: who + n.chain + " HF " + hf + " (liquidation below " + n.liqHf.toFixed(2) + ")." }
 }
 
 function parseThreshold(v, fallback) {
@@ -514,6 +536,7 @@ function parseThreshold(v, fallback) {
 }
 
 if (typeof module !== "undefined") module.exports = {
+  parseWallets: parseWallets, walletList: walletList,
   SITE: SITE, PAGES: PAGES, marketUrl: marketUrl,
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
   mergeChains: mergeChains, lowestHf: lowestHf, levelFor: levelFor, decideNotify: decideNotify,

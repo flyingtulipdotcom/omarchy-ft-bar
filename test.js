@@ -93,3 +93,15 @@ const pts2 = M.parsePoints({ data: { chains: [
   { chainData: null, isAllChains: true, userMetrics: { totalPoints: 661889.8147003637 } }] } })
 assert.deepEqual(pts2.chains.map(c => c.name + " " + M.fmtPoints(c.points)), ["Ethereum 616K", "Sonic 45.8K"])
 console.log("earned breakdown / points per chain ok")
+
+// ---- several wallets
+const WA = "0x" + "1".repeat(40), WB = "0x" + "2".repeat(40)
+const pw = M.parseWallets(" " + WA + ", " + WB.toUpperCase().replace("0X", "0x") + ";" + WA + "\n0x12 ")
+assert.deepEqual(pw.list, [WA, WB]); assert.deepEqual(pw.bad, ["0x12"])
+assert.deepEqual(M.parseWallets([WB, WA, WB]).list, [WB, WA])
+assert.deepEqual(M.walletList([WB], WA), [WB, WA], "1.0.x single wallet kept after the list")
+assert.deepEqual(M.walletList([], WA), [WA]); assert.deepEqual(M.walletList(undefined, ""), [])
+const nt = M.notifyText({ level: 1, hf: 1.36, chain: "Sonic", liqHf: 1.25, wallet: "0x2222…2222" })
+assert(nt.body.startsWith("0x2222…2222: Sonic HF 1.36"), nt.body)
+assert(M.notifyText({ level: 2, hf: 1.2, chain: "Sonic", liqHf: 1.25 }).body.startsWith("Sonic HF 1.20"))
+console.log("wallets ok")

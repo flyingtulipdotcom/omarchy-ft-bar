@@ -93,7 +93,8 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           spacing: 1
           Text { textFormat: Text.PlainText; text: "Flying Tulip"; color: h.cText; font.family: root.fam; font.pixelSize: 13; font.weight: Font.DemiBold }
-          Text { textFormat: Text.PlainText; text: h.walletValid ? Model.shortAddr(h.wallet) : "Market, fees and your account"; color: h.cFaint; font.family: root.fam; font.pixelSize: 10 }
+          // the wallet shown, and which of several it is
+          Text { textFormat: Text.PlainText; text: h.walletValid ? Model.shortAddr(h.wallet) + (h.wallets.length > 1 ? "  " + (h.walletIndex + 1) + "/" + h.wallets.length : "") : "Market, fees and your account"; color: h.walletValid ? h.cSub : h.cFaint; font.family: root.fam; font.pixelSize: 10 }
         }
       }
       MouseArea {
@@ -107,11 +108,25 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
+        IconBtn { visible: h.wallets.length > 1; glyph: "⇄"; onClicked: h.nextWallet() }
         IconBtn { glyph: ""; onClicked: h.openEditor() }
         IconBtn { glyph: ""; onClicked: { h.refresh(); h.refreshSlow(true) } }
       }
     }
     Rectangle { width: parent.width; height: 1; color: h.cBorder }
+
+    // ---- tabs: everything fits without scrolling; the header above and the footer stay on every tab
+    Row {
+      spacing: 6
+      Pill { text: "Market"; selected: h.tab === "market"; onClicked: h.setTab("market") }
+      Pill { text: "Account"; selected: h.tab === "account"; onClicked: h.setTab("account") }
+      Pill { text: "Positions"; selected: h.tab === "positions"; onClicked: h.setTab("positions") }
+    }
+
+    Column {
+    visible: h.tab === "market"
+    width: parent.width
+    spacing: 10
 
     // ---- hero stats
     Card {
@@ -220,9 +235,11 @@ Item {
       }
     }
 
+    }
+
     // ---- no wallet: friendly prompt
     Card {
-      visible: !h.walletValid
+      visible: !h.walletValid && h.tab !== "market"
       width: parent.width
       url: Model.SITE
       Row {
@@ -246,9 +263,9 @@ Item {
       }
     }
 
-    // ---- wallet cards
+    // ---- wallet cards: Account tab
     Column {
-      visible: h.walletValid
+      visible: h.walletValid && h.tab === "account"
       width: parent.width
       spacing: 10
 
@@ -361,7 +378,7 @@ Item {
           }
           LineChart {
             width: parent.width
-            height: 96
+            height: 72
             visible: h.rewardsSeries !== null && h.rewardsSeries.length > 1
             values: h.rewardsSeries ? h.rewardsSeries.map(function (d) { return d[h.histSeries] }) : []
             lineColor: h.histSeries === "earned" ? h.cTulip : "#249c91"
@@ -393,7 +410,7 @@ Item {
           Cap { text: "Daily FT earned · last " + (h.rewardsHist ? h.rewardsHist.length : 30) + " days" }
           BarChart {
             width: parent.width
-            height: 80
+            height: 52
             values: h.rewardsHist ? h.rewardsHist.map(function (d) { return d.gain }) : []
             barColor: h.cTulip400
             lastColor: h.cTulip300
@@ -405,6 +422,14 @@ Item {
           }
         }
       }
+
+    }
+
+    // ---- Positions tab
+    Column {
+      visible: h.walletValid && h.tab === "positions"
+      width: parent.width
+      spacing: 10
 
       Card {
         width: parent.width
@@ -422,7 +447,7 @@ Item {
           Flickable {
             visible: h.positions.length > 0
             width: parent.width
-            height: Math.min(posCol.implicitHeight, 236)
+            height: Math.min(posCol.implicitHeight, 420)
             contentWidth: width
             contentHeight: posCol.implicitHeight
             clip: true

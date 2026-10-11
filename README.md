@@ -2,11 +2,23 @@
 
 A bar widget that puts [Flying Tulip](https://flyingtulip.com) in the Omarchy top bar:
 
-    [tulip] $0.1502  fees $954  HF ∞  PnL $0.00  FT earned 470.8  pts 1.2M  PUT +50.2%
+    [tulip] $0.1502  fees $954  HF ∞  PnL $0.00  FT earned 470.8  pts 1.2M  PUT +50.2%  0xd67d…6fcd ⇄
 
 (Numbers above are illustrative.) With no wallet set, the bar shows the FT price, 24h application fees and a
-"set wallet" prompt. Set a public wallet address to also see health factor, PnL, FT rewards, points, ftPUT gain and
-open positions. Click the widget for an info panel with charts.
+"set wallet" prompt. Add one or more public wallet addresses to also see health factor, PnL, FT rewards, points, ftPUT
+gain and open positions. Click the widget for an info panel in three tabs (Market, Account, Positions), so nothing
+needs scrolling; the panel remembers the last tab.
+
+## Several wallets
+
+- The bar shows one wallet at a time and moves to the next one every minute (`rotateSec`). With more than one wallet
+  the bar ends with the shown wallet's short address and a switch icon ⇄: click the icon for the next wallet now.
+- If any wallet's health factor is at or below your warning threshold, that wallet is shown at once and stays shown
+  while it is low (a click on ⇄ peeks at the others; the next minute it comes back). The notification names the wallet.
+- The wallets you are not looking at are checked in the background: their health factor (`/mm/lend`) every refresh
+  while they have debt, every 10 minutes otherwise. Everything else is fetched for the wallet shown only, so a second
+  wallet adds about one extra request per refresh, not a second full refresh.
+- The panel header shows which wallet it is about ("0xd67d…6fcd  1/2") with the same ⇄ button.
 
 All data comes from the public Flying Tulip API (`https://api.flyingtulip.com`). No API keys, no RPC, no private data.
 The widget only ever reads data for the public address you give it.
@@ -23,12 +35,12 @@ To remove it: `omarchy plugin remove flyingtulip.ft-bar`.
 A bar widget that is already mounted is not re-instantiated on file changes, so after editing QML run
 `omarchy-restart-shell`.
 
-## Set your wallet (no JSON editing)
+## Set your wallets (no JSON editing)
 
 - click "set wallet" in the bar, or right-click the widget, or press the gear in the click panel;
-- paste the 0x address and press Enter. It is validated (0x + 40 hex), stored lowercase in a per-user state file (see below),
-  and everything refreshes at once;
-- "Clear" removes it again (HF, PnL, rewards, points, PUT and positions hide).
+- paste a 0x address and press Enter (or Add). It is validated (0x + 40 hex), stored lowercase in a per-user state file
+  (see below), and shown at once. Several addresses separated by commas or spaces can be pasted together;
+- the list in the editor: click an address to show it, ✎ to replace it with another address, ✕ to remove it.
 
 ## Where settings live
 
@@ -47,7 +59,10 @@ Optional keys, read from the file above or from the widget's entry in your Omarc
 
 | key | default | meaning |
 |---|---|---|
-| `wallet` | `""` | public address to track (normally set from the UI) |
+| `wallets` | `[]` | public addresses to track (normally set from the UI) |
+| `wallet` | `""` | the single address of 1.0.x, still read (kept equal to the first of `wallets`) |
+| `rotateSec` | `60` | seconds each wallet is shown before the next one (min 10) |
+| `tab` | | the panel tab last shown (written by the panel) |
 | `refreshIntervalSec` | `60` | poll interval in seconds (min 15) |
 | `hfWarn` | `"1.40"` | warning notification at or below this health factor |
 | `hfCritical` | `"1.30"` | critical notification at or below this health factor (keep above 1.25) |
@@ -104,7 +119,7 @@ The gear and refresh buttons and the range pills keep their actions.
 
 Positions can be liquidated while the health factor is below 1.25. A warning notification fires at or below `hfWarn`,
 a critical one at or below `hfCritical`; each fires once per upward crossing with a 0.05 hysteresis and a cooldown per
-level. Alert state is kept in memory only.
+level, for each wallet separately. Alert state is kept in memory only.
 
 ## Offline behaviour
 
