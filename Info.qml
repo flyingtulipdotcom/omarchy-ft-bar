@@ -301,9 +301,14 @@ Item {
           width: parent.cw; url: Model.PAGES.rewards
           Stat {
             width: parent.width
-            label: "FT earned"
+            label: "FT earned · all time"
             value: Model.fmtFt(h.rewards ? h.rewards.totalFt : NaN) + " FT"
-            sub: h.rewards && h.price && isFinite(h.rewards.totalFt) ? "≈ " + Model.fmtUsd(h.rewards.totalFt * h.price.price) + " at market" + (h.rewards.claimableFt > 0 ? "  ·  claim " + Model.fmtFt(h.rewards.claimableFt) : "") : ""
+            // all time and all chains: what sftUSD staking and Lend supply paid out, not the wallet's size
+            sub: h.rewards && isFinite(h.rewards.totalFt) ? [
+              "sftUSD yield " + Model.fmtFt(h.rewards.sftFt) + "  ·  Lend " + Model.fmtFt(h.rewards.lendFt),
+              Model.earnedByChain(h.rewards),
+              (h.price ? "≈ " + Model.fmtUsd(h.rewards.totalFt * h.price.price) + " at market" : "") + (h.rewards.claimableFt > 0 ? "  ·  claim " + Model.fmtFt(h.rewards.claimableFt) : "")
+            ].filter(function (x) { return x !== "" }).join("\n") : ""
             valueColor: h.cTulip300
             labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam; valueSize: 18
           }
@@ -312,9 +317,13 @@ Item {
           width: parent.cw; url: Model.PAGES.points
           Stat {
             width: parent.width
-            label: "Points"
+            label: "Points · all chains"
             value: Model.fmtPoints(h.points ? h.points.total : NaN)
-            sub: (h.rank ? "rank #" + h.rank.rank + " of " + h.rank.total : "") + (h.points && h.points.unclaimed > 0 && !h.rank ? "unclaimed " + Model.fmtPoints(h.points.unclaimed) : "")
+            // the site's big number is one chain at a time; this is the all-networks total, split per chain
+            sub: [
+              h.points && h.points.chains ? h.points.chains.map(function (c) { return c.name + " " + Model.fmtPoints(c.points) }).join("  ·  ") : "",
+              h.rank ? "rank #" + h.rank.rank + " of " + h.rank.total : ""
+            ].filter(function (x) { return x !== "" }).join("\n")
             valueColor: h.cText
             labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam; valueSize: 18
           }

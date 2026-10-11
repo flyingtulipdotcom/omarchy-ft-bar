@@ -69,3 +69,27 @@ assert.equal(M.marketUrl("wS-ftUSD", 146), "https://flyingtulip.com/trade/?symbo
 assert.equal(M.marketUrl("", NaN), "https://flyingtulip.com/trade/?symbol=FT-ftUSD&marketType=spot")
 for (const k in M.PAGES) assert(/^https:\/\/flyingtulip\.com\/([a-z-]+\/)*$/.test(M.PAGES[k]), k)
 console.log("links ok")
+
+// ---- FT earned breakdown and points per chain (two real wallet shapes, addresses removed)
+// The smaller wallet claimed sftUSD yield months ago; the larger one only supplies Lend and earns
+// small rewards whose raw amounts have 16 to 17 digits (0.001 to 0.1 FT), which the old rawFt
+// read as trillions of FT.
+assert(Math.abs(M.rawUnits("60167126473248989", 18) - 0.060167126473248989) < 1e-15)
+assert(Math.abs(M.rawUnits("3646974199494715", 18) - 0.003646974199494715) < 1e-15)
+const SMALL = { success: true, data: { chains: [
+  { chainId: 1, staking: { pending_yield_ft: "0", claimed_yield_ft: "0", claimed_yield_indexed_through_block: 26165977 }, lend: { userMetrics: { ftRewards: null, ftRewardsError: null } } },
+  { chainId: 146, staking: { pending_yield_ft: "0", claimed_yield_ft: "95386787178560501045", claimed_yield_indexed_through_block: 80722469 }, lend: { userMetrics: { ftRewards: null } } }] } }
+const LARGE = { success: true, data: { chains: [
+  { chainId: 1, staking: { pending_yield_ft: "0", claimed_yield_ft: "0", claimed_yield_indexed_through_block: 26165977 }, lend: { userMetrics: { ftRewards: { receivedFtRaw: "0", pendingFtRaw: "60167126473248989" } } } },
+  { chainId: 146, staking: { pending_yield_ft: "0", claimed_yield_ft: "0", claimed_yield_indexed_through_block: 80722469 }, lend: { userMetrics: { ftRewards: { receivedFtRaw: "743020047575476813", pendingFtRaw: "59654073282058744" } } } }] } }
+const rs1 = M.parseRewards(SMALL), rl = M.parseRewards(LARGE)
+assert(Math.abs(rs1.totalFt - 95.386787178560501) < 1e-9 && rs1.lendFt === 0)
+assert(Math.abs(rl.totalFt - 0.862841247331) < 1e-9, rl.totalFt); assert.equal(M.fmtFt(rl.totalFt), "0.86")
+assert.equal(M.earnedByChain(rs1), "Sonic 95.4"); assert.equal(M.earnedByChain(rl), "Ethereum 0.06, Sonic 0.80")
+assert(isNaN(M.parseRewards({ success: true, data: { sectionErrors: { lend: "x" }, chains: [{ chainId: 146 }] } }).totalFt))
+const pts2 = M.parsePoints({ data: { chains: [
+  { chainData: { id: 146, name: "Sonic" }, isAllChains: false, userMetrics: { totalPoints: 45757.02690673988 } },
+  { chainData: { id: 1, name: "Ethereum" }, isAllChains: false, userMetrics: { totalPoints: 616132.7877936237 } },
+  { chainData: null, isAllChains: true, userMetrics: { totalPoints: 661889.8147003637 } }] } })
+assert.deepEqual(pts2.chains.map(c => c.name + " " + M.fmtPoints(c.points)), ["Ethereum 616K", "Sonic 45.8K"])
+console.log("earned breakdown / points per chain ok")

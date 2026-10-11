@@ -47,6 +47,8 @@ Item {
     font.family: root.fontFamilies
     font.pixelSize: 10
     width: root.width
+    wrapMode: Text.WordWrap
+    maximumLineCount: 4
     elide: Text.ElideRight
   }
   }

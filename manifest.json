@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "flyingtulip.ft-bar",
   "name": "Flying Tulip",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Flying Tulip",
   "license": "MIT",
   "description": "Flying Tulip in the Omarchy bar: FT market price, 24h application fees and, for a wallet you set, health factor with liquidation alerts, PnL, rewards, points and ftPUT gain. Public API only.",

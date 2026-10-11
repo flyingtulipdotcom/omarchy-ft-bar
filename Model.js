@@ -151,50 +151,57 @@ function lowestHf(chains) {
   return best
 }
 
-// /account/dashboard?view=rewards -> total FT earned. Per chain,
+// /account/dashboard?view=rewards -> FT earned, all time and all chains. Per chain,
 //   sftUSD all-time = staking.claimed_yield_ft + staking.pending_yield_ft
 //     (unknown when claimed_yield_indexed_through_block is unset or claimed_yield_stale)
 //   Lend lifetime   = lend.userMetrics.ftRewards.receivedFtRaw + pendingFtRaw
-// total = sum over chains; null ("—") if any piece is unknown or a section errored.
-// Raw values are 18-decimal strings; converted to Number for display only.
-function rawFt(s) {
-  if (s === null || s === undefined || !/^\d+$/.test(String(s))) return NaN
-  var str = String(s)
-  if (str.length <= 15) return Number(str) / 1e18
-  var head = str.slice(0, str.length - 18) || "0"
-  var tail = str.slice(-18)
-  return Number(head) + Number("0." + tail)
-}
+// It is what the wallet's sftUSD staking and Lend supply have paid over time, so it
+// does not follow the wallet's current size. total = sum over chains; NaN ("—") if any
+// piece is unknown or a section errored. Raw values are 18-decimal integer strings.
+function rawFt(s) { return rawUnits(s, 18) }
 
 function parseRewards(body) {
   var d = body && body.success !== false && body.data
   if (!d || !d.chains) return null
   var errs = d.sectionErrors || {}
   var stakingFailed = !!errs.staking, lendFailed = !!errs.lend
-  var chains = [], total = 0, known = !stakingFailed && !lendFailed, claimable = 0
+  var known = !stakingFailed && !lendFailed
+  var r = { totalFt: NaN, claimableFt: 0, sftClaimed: 0, sftPending: 0, lendReceived: 0, lendPending: 0, chains: [] }
   for (var i = 0; i < d.chains.length; i++) {
     var c = d.chains[i], st = c.staking, lm = c.lend && c.lend.userMetrics
     var pendingSft = st ? rawFt(st.pending_yield_ft) : (stakingFailed ? NaN : 0)
     var claimedSft = st ? ((st.claimed_yield_indexed_through_block && !st.claimed_yield_stale) ? rawFt(st.claimed_yield_ft) : NaN)
                         : (stakingFailed ? NaN : 0)
-    var sft = isFinite(pendingSft) && isFinite(claimedSft) ? pendingSft + claimedSft : NaN
-    var lend = lendFailed ? NaN : 0
+    var rec = lendFailed ? NaN : 0, pen = lendFailed ? NaN : 0
     if (c.lend) {
       var fr = lm && lm.ftRewards
-      if (lm && lm.ftRewardsError) lend = NaN
-      else if (fr) {
-        var r = rawFt(fr.receivedFtRaw), p = rawFt(fr.pendingFtRaw)
-        lend = isFinite(r) && isFinite(p) ? r + p : NaN
-      } else if (!lm) lend = NaN
-      else lend = 0
+      if (lm && lm.ftRewardsError) rec = pen = NaN
+      else if (fr) { rec = rawFt(fr.receivedFtRaw); pen = rawFt(fr.pendingFtRaw) }
+      else if (!lm) rec = pen = NaN
+      else rec = pen = 0
     }
-    if (isFinite(pendingSft)) claimable += pendingSft
-    if (!isFinite(sft) || !isFinite(lend)) known = false
-    else total += sft + lend
-    chains.push({ chainId: Number(c.chainId), name: HF_CHAINS[Number(c.chainId)] || String(c.chainId),
-      sftUsd: sft, lend: lend, claimable: isFinite(pendingSft) ? pendingSft : 0 })
+    if (isFinite(pendingSft)) r.claimableFt += pendingSft
+    var sft = isFinite(pendingSft) && isFinite(claimedSft) ? pendingSft + claimedSft : NaN
+    var lend = isFinite(rec) && isFinite(pen) ? rec + pen : NaN
+    r.chains.push({ chainId: Number(c.chainId), name: HF_CHAINS[Number(c.chainId)] || String(c.chainId),
+      sftUsd: sft, sft: sft, lend: lend, claimable: isFinite(pendingSft) ? pendingSft : 0 })
+    if (!isFinite(sft) || !isFinite(lend)) { known = false; continue }
+    r.sftClaimed += claimedSft; r.sftPending += pendingSft; r.lendReceived += rec; r.lendPending += pen
   }
-  return { totalFt: known ? total : NaN, claimableFt: claimable, chains: chains }
+  r.sftFt = r.sftClaimed + r.sftPending
+  r.lendFt = r.lendReceived + r.lendPending
+  r.totalFt = known ? r.sftFt + r.lendFt : NaN
+  return r
+}
+
+// Chains that earned something, as "Sonic 95.4, Ethereum 0.06".
+function earnedByChain(r) {
+  var out = []
+  for (var i = 0; r && r.chains && i < r.chains.length; i++) {
+    var v = r.chains[i].sft + r.chains[i].lend
+    if (v >= 0.005) out.push(r.chains[i].name + " " + fmtFt(v))
+  }
+  return out.join(", ")
 }
 
 function fmtFt(v) {
@@ -297,17 +304,27 @@ function shortAddr(a) { a = String(a || ""); return a.length > 12 ? a.slice(0, 6
 
 // ---- points (public points endpoints) --
 
-// GET /points?walletAddress=  -> the isAllChains entry's userMetrics
+// GET /points?walletAddress= -> the isAllChains total (what the leaderboard ranks) plus each
+// chain's share, largest first. flyingtulip.com/rewards shows ONE chain at a time in its big
+// number, with the all-networks total under it.
 function parsePoints(body) {
   var chains = body && body.data && body.data.chains
   if (!chains) return null
-  var all = null
-  for (var i = 0; i < chains.length; i++) if (chains[i].isAllChains) all = chains[i]
+  var all = null, per = []
+  for (var i = 0; i < chains.length; i++) {
+    var c = chains[i]
+    if (c.isAllChains) { all = c; continue }
+    var v = c.userMetrics ? num(c.userMetrics.totalPoints) : NaN
+    if (!(v > 0)) continue
+    var id = c.chainData ? Number(c.chainData.id) : NaN
+    per.push({ chainId: id, name: HF_CHAINS[id] || (c.chainData && c.chainData.name) || "?", points: v })
+  }
   if (!all || !all.userMetrics) return null
   var m = all.userMetrics
   var total = num(m.totalPoints)
   if (!isFinite(total)) return null
-  return { total: total, claimed: num(m.claimedPoints) || 0, unclaimed: num(m.unclaimedPoints) || 0 }
+  per.sort(function (a, b) { return b.points - a.points })
+  return { total: total, claimed: num(m.claimedPoints) || 0, unclaimed: num(m.unclaimedPoints) || 0, chains: per }
 }
 
 // GET /points/breakdown?walletAddress=&page=1&limit=50 -> positions earning points.
@@ -501,5 +518,5 @@ if (typeof module !== "undefined") module.exports = {
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
   mergeChains: mergeChains, lowestHf: lowestHf, levelFor: levelFor, decideNotify: decideNotify,
   notifyText: notifyText, fmtUsd: fmtUsd, fmtSignedUsd: fmtSignedUsd, fmtPrice: fmtPrice, fmtHf: fmtHf,
-  parsePositions: parsePositions, sortPositions: sortPositions, fmtSize: fmtSize, feesDayOverDay: feesDayOverDay, parseRewardsHistory: parseRewardsHistory, parseRewardsSeries: parseRewardsSeries, dailyGains: dailyGains, parsePoints: parsePoints, parsePointsBreakdown: parsePointsBreakdown, rankInPage: rankInPage, fmtPoints: fmtPoints, parseFeesSeries: parseFeesSeries, parseKlines: parseKlines, shortAddr: shortAddr, parsePuts: parsePuts, putGain: putGain, fmtPct: fmtPct, normalizeWallet: normalizeWallet, rawUnits: rawUnits, parseRewards: parseRewards, fmtFt: fmtFt, isAddress: isAddress, parseThreshold: parseThreshold
+  parsePositions: parsePositions, sortPositions: sortPositions, fmtSize: fmtSize, feesDayOverDay: feesDayOverDay, parseRewardsHistory: parseRewardsHistory, parseRewardsSeries: parseRewardsSeries, dailyGains: dailyGains, parsePoints: parsePoints, parsePointsBreakdown: parsePointsBreakdown, rankInPage: rankInPage, fmtPoints: fmtPoints, parseFeesSeries: parseFeesSeries, parseKlines: parseKlines, shortAddr: shortAddr, parsePuts: parsePuts, putGain: putGain, fmtPct: fmtPct, normalizeWallet: normalizeWallet, rawUnits: rawUnits, parseRewards: parseRewards, earnedByChain: earnedByChain, fmtFt: fmtFt, isAddress: isAddress, parseThreshold: parseThreshold
 }

@@ -86,9 +86,16 @@ The gear and refresh buttons and the range pills keep their actions.
 - **HF**: lowest `healthFactor` among your chains that carry debt (`/mm/lend?user=`). No debt shows `∞`; colours follow
   your thresholds.
 - **PnL**: sum of `unrealizedPnl` from `/mm/spot/account/summary` across chains.
-- **FT earned**: sftUSD yield (claimed + pending) plus Lend FT rewards (received + pending), summed over chains
-  (`/account/dashboard?view=rewards`), with a cumulative "FT earned over time" line (all chains, ranges 7d / 30d / 90d / all, Total earned or Claimed) and daily bars, both from `/account/rewards/history?address=&range=`.
-- **Points**: `/points` totals, rank from `/points/leaderboard`, earning positions from `/points/breakdown`.
+- **FT earned**: all time and all chains. sftUSD yield (claimed + pending) plus Lend FT rewards (received + pending),
+  summed over chains (`/account/dashboard?view=rewards`). The panel card splits it into sftUSD yield and Lend and by
+  chain. It is what the wallet's sftUSD staking and Lend supply have paid out over time, so it does not follow the
+  wallet's current size: a small wallet that staked sftUSD for months can show more than a large wallet that only
+  started supplying Lend last week. FT held in ftPUTs is not counted. The panel also has a cumulative "FT earned over
+  time" line (all chains, ranges 7d / 30d / 90d / all, Total earned or Claimed) and daily bars, both from
+  `/account/rewards/history?address=&range=`.
+- **Points**: the all-chains total from `/points` (the number the leaderboard ranks), split per chain in the panel,
+  rank from `/points/leaderboard`, earning positions from `/points/breakdown`. The big number on flyingtulip.com/rewards
+  is one chain at a time (the chain picker in the site header), and the all-networks total is the small line under it.
 - **ftPUT gain**: from `/tge/ftPUT/user/<wallet>`. cost = sum(current_capital x strike); value =
   (current_ft + withdrawn_ft) x FT market price; gain = value - cost, also shown as a percentage. Hidden with no PUTs.
 - **Positions**: `/mm/spot/account/positions` per chain: asset, side, leverage, size, entry, mark, unrealized PnL.
