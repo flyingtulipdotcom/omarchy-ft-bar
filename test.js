@@ -132,3 +132,17 @@ for (const id of ["header-logo", "market-ft-price", "market-fees", "market-fees-
   "account-points", "account-ftput", "positions-row", "footer-open-site"]) assert(ids.includes(id), "element " + id)
 assert(!/trac[k]/i.test(wq + iq + fsx.readFileSync(__dirname + "/Model.js", "utf8") + fsx.readFileSync(__dirname + "/README.md", "utf8")), "calm wording")
 console.log("usage stats ok")
+
+// ---- link origin marker and the switch events
+assert.equal(M.originUrl("https://flyingtulip.com/", "header-logo", "Arch Linux"),
+  "https://flyingtulip.com/?utm_source=ft-widget&utm_medium=omarchy&utm_content=header-logo#ftw=omarchy.arch-linux.1-3-0.header-logo")
+assert.equal(M.originUrl("https://flyingtulip.com/trade/?symbol=FT-ftUSD&chainId=146&marketType=spot", "market-ft-price", "Arch Linux"),
+  "https://flyingtulip.com/trade/?symbol=FT-ftUSD&chainId=146&marketType=spot&utm_source=ft-widget&utm_medium=omarchy&utm_content=market-ft-price#ftw=omarchy.arch-linux.1-3-0.market-ft-price")
+assert.equal(M.originUrl("https://flyingtulip.com/rewards/#my-activity", "account-points", "Arch Linux"),
+  "https://flyingtulip.com/rewards/?utm_source=ft-widget&utm_medium=omarchy&utm_content=account-points#my-activity")
+assert.equal(M.osSlug("Ubuntu 24"), "ubuntu-24"); assert.equal(M.osSlug(""), "linux")
+const wq2 = fsx.readFileSync(__dirname + "/Widget.qml", "utf8")
+assert(/Qt\.openUrlExternally\(analytics \? Model\.originUrl\(url, element, osLabel\) : url\)/.test(wq2), "the marker only while usage stats are on")
+assert(/if \(!on\) stat\("Usage stats off", \{ os: osLabel \|\| "Linux" \}\)\n    writeState\(\{ analytics: !!on \}\)\n    if \(on\) stat\("Usage stats on"/.test(wq2), "off: one event before switching, on: one after")
+assert.equal((wq2.match(/Qt\.openUrlExternally\(/g) || []).length, 1, "pages open in one place")
+console.log("origin marker ok")

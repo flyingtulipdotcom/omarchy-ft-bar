@@ -100,11 +100,17 @@ BarWidget {
   // every element that opens flyingtulip.com: count the click (its element id, the URL without any address), open it
   function openLink(element, url) {
     stat("Link click", { element: element, url: url })
-    Qt.openUrlExternally(url)
+    Qt.openUrlExternally(analytics ? Model.originUrl(url, element, osLabel) : url)
   }
   function manualNext() { if (wallets.length > 1) { stat("Wallet switch"); nextWallet() } }
   function manualRefresh() { stat("Refresh"); refresh(); refreshSlow(true) }
-  function setAnalytics(on) { writeState({ analytics: !!on }) }
+  // one last event on the way off (then nothing), one on the way back on
+  function setAnalytics(on) {
+    if (!!on === analytics) return
+    if (!on) stat("Usage stats off", { os: osLabel || "Linux" })
+    writeState({ analytics: !!on })
+    if (on) stat("Usage stats on", { os: osLabel || "Linux" })
+  }
 
   // Merge `patch` into the saved settings and write the file atomically.
   function writeState(patch) {
@@ -535,7 +541,7 @@ BarWidget {
   readonly property string nerdFont: bar ? bar.fontFamily : "monospace"
   function deltaColor(v) { return !isFinite(v) || Math.abs(v) < 0.005 ? cSub : (v > 0 ? cGreen : cRed) }
   // Open a public flyingtulip.com page in the default browser; the panel closes after.
-  function openUrl(url, element) { stat("Link click", { element: element || "panel", url: url }); Qt.openUrlExternally(url); if (mode === "info") close() }
+  function openUrl(url, element) { openLink(element || "panel", url); if (mode === "info") close() }
   readonly property string marketLink: Model.marketUrl("FT-ftUSD", priceChainId)
   function lastUpdate() { return Math.max(priceAt, feesAt, accountAt) }
   function ago(ts) {

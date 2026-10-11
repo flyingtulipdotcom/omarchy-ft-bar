@@ -539,7 +539,7 @@ function parseThreshold(v, fallback) {
 // Only the event name, the platform, the widget version and the few values the widget passes (os, host, tab,
 // element, url, level, endpoint, a wallet count bucket) are sent. Never a wallet address, balance or position: any
 // 0x address in a value becomes ":address". The widget sends nothing while "analytics" is false.
-var WIDGET_VERSION = "1.2.0"
+var WIDGET_VERSION = "1.3.0"
 var STATS_ENDPOINT = "https://plausible.io/api/event"
 var STATS_UA = "Mozilla/5.0 (X11; Linux x86_64) FlyingTulipWidget/" + WIDGET_VERSION
 var STAT_CAP = 30
@@ -564,6 +564,17 @@ function statAllowed(state, name, nowMs) {
   return true
 }
 function walletsBucket(n) { return n >= 3 ? "3+" : String(n) }
+function osSlug(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "linux" }
+// Where a visit to flyingtulip.com came from, for the website's own stats, only while usage stats are on:
+//   ?utm_source=ft-widget&utm_medium=omarchy&utm_content=<element>  (added to the query the URL already has)
+//   #ftw=omarchy.<os-slug>.<version, dots as dashes>.<element>      (left out when the URL already has an anchor)
+function originUrl(url, element, os) {
+  var el = String(element || "").toLowerCase().replace(/[^a-z0-9-]/g, "")
+  var i = url.indexOf("#"), base = i < 0 ? url : url.slice(0, i), hash = i < 0 ? null : url.slice(i + 1)
+  var q = (base.indexOf("?") < 0 ? "?" : "&") + "utm_source=ft-widget&utm_medium=omarchy&utm_content=" + el
+  if (hash !== null) return base + q + "#" + hash
+  return base + q + "#ftw=omarchy." + osSlug(os) + "." + WIDGET_VERSION.replace(/\./g, "-") + "." + el
+}
 // "Arch Linux", "Ubuntu 24" ... from /etc/os-release
 function osName(text) {
   var t = String(text || ""), name = (t.match(/^NAME="?([^"\n]+)"?/m) || [])[1] || "Linux"
@@ -584,7 +595,7 @@ function statEndpoint(path) {
 
 if (typeof module !== "undefined") module.exports = {
   WIDGET_VERSION: WIDGET_VERSION, STATS_UA: STATS_UA, statBody: statBody, statArgs: statArgs, statAllowed: statAllowed,
-  walletsBucket: walletsBucket, osName: osName, statEndpoint: statEndpoint, statValue: statValue,
+  walletsBucket: walletsBucket, osName: osName, osSlug: osSlug, originUrl: originUrl, statEndpoint: statEndpoint, statValue: statValue,
   parseWallets: parseWallets, walletList: walletList,
   SITE: SITE, PAGES: PAGES, marketUrl: marketUrl,
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
