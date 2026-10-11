@@ -22,6 +22,7 @@ Item {
   Canvas {
     id: canvas
     anchors.left: parent.left
+    anchors.leftMargin: root.hi > 0 ? Math.max(hiLabel.implicitWidth, loLabel.implicitWidth) + 6 : 0   // the axis labels' gutter
     anchors.right: parent.right
     anchors.top: parent.top
     height: parent.height - 16
@@ -59,8 +60,8 @@ Item {
       ctx.fill()
     }
   }
-  Text { anchors.top: parent.top; anchors.left: parent.left; text: root.hi > 0 ? root.formatValue(root.hi) : ""; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
-  Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 18; anchors.left: parent.left; text: root.hi > 0 ? root.formatValue(root.lo) : ""; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
+  Text { id: hiLabel; anchors.top: parent.top; anchors.left: parent.left; text: root.hi > 0 ? root.formatValue(root.hi) : ""; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
+  Text { id: loLabel; anchors.bottom: parent.bottom; anchors.bottomMargin: 18; anchors.left: parent.left; text: root.hi > 0 ? root.formatValue(root.lo) : ""; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
   Text { anchors.bottom: parent.bottom; anchors.left: parent.left; text: root.startLabel; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
   Text { anchors.bottom: parent.bottom; anchors.right: parent.right; text: root.endLabel; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 9 }
 }

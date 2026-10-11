@@ -24,7 +24,8 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
-    height: parent.height - 16
+    anchors.topMargin: root.maxLabel !== "" ? 13 : 0   // room for the max label above the bars
+    height: parent.height - 16 - anchors.topMargin
     onPaint: {
       var ctx = getContext("2d")
       ctx.reset()

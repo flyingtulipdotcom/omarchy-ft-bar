@@ -298,13 +298,17 @@ Item {
         }
       }
 
-      Grid {
+      // Two cards per row, both as tall as the taller one, so tops, bottoms and the label / value / detail lines
+      // line up. A row with one card (no ftPUT) gives it the full width instead of leaving an empty half.
+      Row {
+        id: cardRow1
         width: parent.width
-        columns: 2
         spacing: 10
         readonly property real cw: (width - 10) / 2
+        readonly property real rowH: Math.max(pnlCard.implicitHeight, earnCard.implicitHeight)
         Card {
-          width: parent.cw; url: Model.PAGES.portfolio
+          id: pnlCard
+          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.portfolio
           Stat {
             width: parent.width
             label: "PnL (unrealized)"
@@ -315,7 +319,8 @@ Item {
           }
         }
         Card {
-          width: parent.cw; url: Model.PAGES.rewards
+          id: earnCard
+          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.rewards
           Stat {
             width: parent.width
             label: "FT earned · all time"
@@ -330,8 +335,17 @@ Item {
             labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam; valueSize: 18
           }
         }
+      }
+      Row {
+        id: cardRow2
+        width: parent.width
+        spacing: 10
+        readonly property bool pair: putCard.visible
+        readonly property real cw: pair ? (width - 10) / 2 : width
+        readonly property real rowH: Math.max(pointsCard.implicitHeight, pair ? putCard.implicitHeight : 0)
         Card {
-          width: parent.cw; url: Model.PAGES.points
+          id: pointsCard
+          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.points
           Stat {
             width: parent.width
             label: "Points · all chains"
@@ -340,13 +354,14 @@ Item {
             sub: [
               h.points && h.points.chains ? h.points.chains.map(function (c) { return c.name + " " + Model.fmtPoints(c.points) }).join("  ·  ") : "",
               h.rank ? "rank #" + h.rank.rank + " of " + h.rank.total : ""
-            ].filter(function (x) { return x !== "" }).join("\n")
+            ].filter(function (x) { return x !== "" }).join(cardRow2.pair ? "\n" : "  ·  ")
             valueColor: h.cText
             labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam; valueSize: 18
           }
         }
         Card {
-          width: parent.cw; url: Model.PAGES.put
+          id: putCard
+          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.put
           visible: h.putGain !== null
           Stat {
             width: parent.width
