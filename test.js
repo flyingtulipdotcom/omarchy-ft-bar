@@ -105,3 +105,30 @@ const nt = M.notifyText({ level: 1, hf: 1.36, chain: "Sonic", liqHf: 1.25, walle
 assert(nt.body.startsWith("0x2222…2222: Sonic HF 1.36"), nt.body)
 assert(M.notifyText({ level: 2, hf: 1.2, chain: "Sonic", liqHf: 1.25 }).body.startsWith("Sonic HF 1.20"))
 console.log("wallets ok")
+
+// ---- anonymous usage stats
+const fsx = require("fs")
+assert.equal(M.WIDGET_VERSION, JSON.parse(fsx.readFileSync(__dirname + "/manifest.json", "utf8")).version, "version sent = manifest version")
+assert(/^Mozilla\/5\.0 \(X11; Linux x86_64\) FlyingTulipWidget\/\d/.test(M.STATS_UA), "browser-like user agent")
+const sb = JSON.parse(M.statBody("Link click", { element: "account-pnl", url: "https://flyingtulip.com/trade/portfolio/?a=" + WA }))
+assert.deepEqual(sb, { name: "Link click", url: "app://widget/omarchy", domain: "widget",
+  props: { platform: "omarchy", version: M.WIDGET_VERSION, element: "account-pnl", url: "https://flyingtulip.com/trade/portfolio/?a=:address" } })
+const sa = M.statArgs(M.statBody("pageview", { os: "Arch Linux", walletsConfigured: M.walletsBucket(5) }))
+assert.equal(sa[0], "curl"); assert(sa.includes("https://plausible.io/api/event")); assert.equal(sa[sa.indexOf("-m") + 1], "10"); assert.equal(sa[sa.indexOf("-A") + 1], M.STATS_UA)
+assert.equal(JSON.parse(sa[sa.indexOf("-d") + 1]).props.walletsConfigured, "3+")
+const cap = { hour: -1, counts: {} }; let sent = 0
+for (let i = 0; i < 40; i++) if (M.statAllowed(cap, "Tab view", 1790000000000 + i)) sent++
+assert.equal(sent, 30); assert(M.statAllowed(cap, "Tab view", 1790000000000 + 3600e3), "next hour")
+assert.equal(M.osName('NAME="Arch Linux"\nID=arch\n'), "Arch Linux"); assert.equal(M.osName('NAME="Ubuntu"\nVERSION_ID="24.04"\n'), "Ubuntu 24")
+assert.equal(M.statEndpoint("/mm/lend?user=" + WA), "lend"); assert.equal(M.statEndpoint("/mm/lend?user=" + WA + "&chainId=143"), "")
+assert.equal(M.statEndpoint("/points?walletAddress=" + WA), "points"); assert.equal(M.statEndpoint("/points/leaderboard?page=1"), "leaderboard")
+// the QML: every event goes through stat(), which checks the switch first; every link in the panel is counted with an element id
+const wq = fsx.readFileSync(__dirname + "/Widget.qml", "utf8"), iq = fsx.readFileSync(__dirname + "/Info.qml", "utf8")
+assert(/function stat\(name, props\) \{\n    if \(!analytics\) return false/.test(wq), "stat() checks the switch first")
+assert.equal((wq.match(/Model\.statArgs\(/g) || []).length, 1, "one place sends")
+assert(!/Qt\.openUrlExternally/.test(iq), "the panel opens pages only through openLink/openUrl")
+const ids = [...iq.matchAll(/element: "([a-z0-9-]+)"|openLink\("([a-z0-9-]+)"|openUrl\(Model\.SITE, "([a-z0-9-]+)"\)/g)].map(m => m[1] || m[2] || m[3])
+for (const id of ["header-logo", "market-ft-price", "market-fees", "market-fees-chart", "market-price-chart", "account-hf", "account-pnl", "account-ft-earned",
+  "account-points", "account-ftput", "positions-row", "footer-open-site"]) assert(ids.includes(id), "element " + id)
+assert(!/trac[k]/i.test(wq + iq + fsx.readFileSync(__dirname + "/Model.js", "utf8") + fsx.readFileSync(__dirname + "/README.md", "utf8")), "calm wording")
+console.log("usage stats ok")

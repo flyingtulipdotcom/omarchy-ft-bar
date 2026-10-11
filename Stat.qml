@@ -7,6 +7,9 @@ Item {
   implicitHeight: col.implicitHeight
   height: implicitHeight
   property string url: ""
+  // which element this is, and the panel's opener (it counts the click, then opens the page); unset: just open
+  property string element: ""
+  property var opener: null
   property string label: ""
   property string value: ""
   property string sub: ""
@@ -58,7 +61,7 @@ Item {
     enabled: root.url !== ""
     hoverEnabled: true
     cursorShape: root.url !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-    onClicked: Qt.openUrlExternally(root.url)
+    onClicked: root.opener ? root.opener(root.element, root.url) : Qt.openUrlExternally(root.url)
   }
   opacity: root.url !== "" && statMa.containsMouse ? 0.8 : 1
   Behavior on opacity { NumberAnimation { duration: 120 } }

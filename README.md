@@ -59,10 +59,11 @@ Optional keys, read from the file above or from the widget's entry in your Omarc
 
 | key | default | meaning |
 |---|---|---|
-| `wallets` | `[]` | public addresses to track (normally set from the UI) |
+| `wallets` | `[]` | public addresses to show (normally set from the UI) |
 | `wallet` | `""` | the single address of 1.0.x, still read (kept equal to the first of `wallets`) |
 | `rotateSec` | `60` | seconds each wallet is shown before the next one (min 10) |
 | `tab` | | the panel tab last shown (written by the panel) |
+| `analytics` | `true` | Advanced: anonymous usage stats, `false` turns them off (see "Anonymous usage stats") |
 | `refreshIntervalSec` | `60` | poll interval in seconds (min 15) |
 | `hfWarn` | `"1.40"` | warning notification at or below this health factor |
 | `hfCritical` | `"1.30"` | critical notification at or below this health factor (keep above 1.25) |
@@ -128,6 +129,39 @@ Each source keeps its last good value and dims when older than 3 poll intervals.
 ## Tests
 
 `bun test.js` runs the pure logic in `Model.js` (alert state machine, parsers, formatters).
+
+## Anonymous usage stats
+
+To learn how the widgets are used, the widget sends a few anonymous events to [Plausible](https://plausible.io)
+(`https://plausible.io/api/event`, site "widget"). **No wallet address, balance, position, health factor or any other
+account data is ever sent.** Each event is one small background `curl`, fire and forget: if it fails, nothing changes
+in the bar.
+
+**Turn it off**: right-click the widget (or the gear in the panel) > *Advanced settings* > *Anonymous usage stats*, or
+set `"analytics": false` in the state file (see "Where settings live"). Nothing is sent while it is off.
+
+| Event | When | Values sent with it |
+|---|---|---|
+| pageview | at launch (Windows, Omarchy) and once a day while it runs (all three) | `os` (e.g. "Windows 11", "macOS 15", "Arch Linux"), `host` (Rainmeter version, xbar or SwiftBar, Quickshell), `walletsConfigured` (0, 1, 2 or 3+) |
+| Panel open | the panel is opened (Omarchy), the mouse comes over the skin, at most once per 30 minutes (Windows) | |
+| Tab view | a tab is picked (Windows, Omarchy) | `tab`: market, account or positions |
+| Link click | an element that opens flyingtulip.com is clicked | `element` (see below), `url` (the page opened; any wallet address in it is replaced by ":address") |
+| Wallet switch | the switch icon or "Next wallet" is used (not the automatic rotation) | |
+| Settings open | the wallet settings are opened | |
+| Wallet added, Wallet removed | a wallet is added or removed (never which one) | |
+| HF alert shown | a health factor notification is shown | `level`: warning or danger (never the value or the wallet) |
+| Refresh | the refresh button is used | |
+| Fetch error | an API call fails, at most once an hour per endpoint | `endpoint`: ticker, fees, klines, lend, summary, positions, rewards, points, leaderboard, ftput |
+
+Every event also carries `platform` (windows, macos or omarchy) and `version`. Each event name is sent at most 30 times
+an hour. Element ids, the same on every platform where the element exists: `header-logo`, `header-title`,
+`header-wallet`, `header-status`, `header-open-site`, `menu-open-site`, `banner-hf`, `tabs-rule`, `market-header`,
+`market-ft-price`, `market-fees`, `market-day-over-day`, `market-fees-chart`, `market-price-chart`, `account-header`,
+`account-hint`, `account-wallets-note`, `account-hf`, `account-hf-<chain>` (e.g. `account-hf-sonic`), `account-pnl`,
+`account-ft-earned`, `account-ft-earned-detail`, `account-ft-earned-chart`, `account-ft-earned-daily`, `account-points`,
+`account-points-detail`, `account-points-positions`, `account-ftput`, `account-ftput-positions`, `positions-header`,
+`positions-card`, `positions-row`, `positions-more`, `positions-empty`, `footer-updated`, `footer-open-site`,
+`footer-disclaimer`.
 
 ## Disclaimer
 

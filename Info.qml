@@ -102,15 +102,15 @@ Item {
         anchors.fill: headLink
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: h.openUrl(Model.SITE)
+        onClicked: h.openUrl(Model.SITE, "header-logo")
       }
       Row {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
-        IconBtn { visible: h.wallets.length > 1; glyph: "⇄"; onClicked: h.nextWallet() }
+        IconBtn { visible: h.wallets.length > 1; glyph: "⇄"; onClicked: h.manualNext() }
         IconBtn { glyph: ""; onClicked: h.openEditor() }
-        IconBtn { glyph: ""; onClicked: { h.refresh(); h.refreshSlow(true) } }
+        IconBtn { glyph: ""; onClicked: h.manualRefresh() }
       }
     }
     Rectangle { width: parent.width; height: 1; color: h.cBorder }
@@ -134,10 +134,10 @@ Item {
       Row {
         width: parent.width
         spacing: 8
-        Stat { width: (parent.width - 16) / 3; url: Model.PAGES.fees; label: "Fees last 24h"; value: h.fees ? Model.fmtUsd(h.fees.period24h) : "—"; valueColor: h.cText; labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam }
+        Stat { width: (parent.width - 16) / 3; url: Model.PAGES.fees; element: "market-fees"; opener: h.openLink; label: "Fees last 24h"; value: h.fees ? Model.fmtUsd(h.fees.period24h) : "—"; valueColor: h.cText; labelColor: h.cFaint; subColor: h.cSub; fontFamilies: root.fam }
         Stat {
           width: (parent.width - 16) / 3
-          url: h.marketLink
+          url: h.marketLink; element: "market-ft-price"; opener: h.openLink
           label: "FT price"
           value: h.price ? Model.fmtPrice(h.price.price) : "—"
           sub: h.price && isFinite(h.price.changePct24h) ? Model.fmtPct(h.price.changePct24h) + " 24h" : ""
@@ -146,7 +146,7 @@ Item {
         }
         Stat {
           width: (parent.width - 16) / 3
-          url: Model.PAGES.fees
+          url: Model.PAGES.fees; element: "market-day-over-day"; opener: h.openLink
           label: "Day / day"
           readonly property real d: Model.feesDayOverDay(h.feesSeries)
           value: isFinite(d) ? Model.fmtPct(d) : "—"
@@ -159,7 +159,7 @@ Item {
     // ---- daily fees
     Card {
       width: parent.width
-      url: Model.PAGES.fees
+      url: Model.PAGES.fees; element: "market-fees-chart"; opener: h.openLink
       Column {
         width: parent.width
         spacing: 8
@@ -214,7 +214,7 @@ Item {
     // ---- FT market price
     Card {
       width: parent.width
-      url: h.marketLink
+      url: h.marketLink; element: "market-price-chart"; opener: h.openLink
       Column {
         width: parent.width
         spacing: 8
@@ -241,7 +241,7 @@ Item {
     Card {
       visible: !h.walletValid && h.tab !== "market"
       width: parent.width
-      url: Model.SITE
+      url: Model.SITE; element: "account-hint"; opener: h.openLink
       Row {
         width: parent.width
         spacing: 12
@@ -271,7 +271,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.health
+        url: Model.PAGES.health; element: "account-hf"; opener: h.openLink
         Column {
           width: parent.width
           spacing: 8
@@ -308,7 +308,7 @@ Item {
         readonly property real rowH: Math.max(pnlCard.implicitHeight, earnCard.implicitHeight)
         Card {
           id: pnlCard
-          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.portfolio
+          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.portfolio; element: "account-pnl"; opener: h.openLink
           Stat {
             width: parent.width
             label: "PnL (unrealized)"
@@ -320,7 +320,7 @@ Item {
         }
         Card {
           id: earnCard
-          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.rewards
+          width: parent.cw; height: cardRow1.rowH; url: Model.PAGES.rewards; element: "account-ft-earned"; opener: h.openLink
           Stat {
             width: parent.width
             label: "FT earned · all time"
@@ -345,7 +345,7 @@ Item {
         readonly property real rowH: Math.max(pointsCard.implicitHeight, pair ? putCard.implicitHeight : 0)
         Card {
           id: pointsCard
-          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.points
+          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.points; element: "account-points"; opener: h.openLink
           Stat {
             width: parent.width
             label: "Points · all chains"
@@ -361,7 +361,7 @@ Item {
         }
         Card {
           id: putCard
-          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.put
+          width: parent.cw; height: cardRow2.rowH; url: Model.PAGES.put; element: "account-ftput"; opener: h.openLink
           visible: h.putGain !== null
           Stat {
             width: parent.width
@@ -377,7 +377,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.rewards
+        url: Model.PAGES.rewards; element: "account-ft-earned-chart"; opener: h.openLink
         Column {
           width: parent.width
           spacing: 8
@@ -417,7 +417,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.rewards
+        url: Model.PAGES.rewards; element: "account-ft-earned-daily"; opener: h.openLink
         visible: h.rewardsHist !== null && h.rewardsHist.length > 0
         Column {
           width: parent.width
@@ -448,7 +448,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.portfolio
+        url: Model.PAGES.portfolio; element: "positions-card"; opener: h.openLink
         Column {
           width: parent.width
           spacing: 8
@@ -481,7 +481,7 @@ Item {
                   radius: 9
                   color: rowMa.containsMouse ? Qt.rgba(117 / 255, 89 / 255, 255, 0.10) : Qt.rgba(1, 1, 1, 0.025)
                   Behavior on color { ColorAnimation { duration: 120 } }
-                  MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Qt.openUrlExternally(Model.marketUrl(modelData.market || (modelData.symbol + "-ftUSD"), modelData.chainId)) }
+                  MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: h.openLink("positions-row", Model.marketUrl(modelData.market || (modelData.symbol + "-ftUSD"), modelData.chainId)) }
                   Rectangle {
                     id: badge
                     x: 8; anchors.verticalCenter: parent.verticalCenter
@@ -540,7 +540,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.pointsActivity
+        url: Model.PAGES.pointsActivity; element: "account-points-positions"; opener: h.openLink
         visible: h.pointsRows.length > 0
         Column {
           width: parent.width
@@ -560,7 +560,7 @@ Item {
 
       Card {
         width: parent.width
-        url: Model.PAGES.put
+        url: Model.PAGES.put; element: "account-ftput-positions"; opener: h.openLink
         visible: h.puts !== null
         Column {
           width: parent.width
@@ -591,7 +591,7 @@ Item {
         width: upd.implicitWidth
         height: parent.height
         cursorShape: Qt.PointingHandCursor
-        onClicked: h.openUrl(Model.SITE)
+        onClicked: h.openUrl(Model.SITE, "footer-updated")
       }
       Text {
         id: upd
@@ -613,7 +613,7 @@ Item {
         font.family: root.fam
         font.pixelSize: 11
         Behavior on color { ColorAnimation { duration: 120 } }
-        MouseArea { id: dashMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: h.openUrl(Model.SITE) }
+        MouseArea { id: dashMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: h.openUrl(Model.SITE, "footer-open-site") }
       }
     }
   }

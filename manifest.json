@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "flyingtulip.ft-bar",
   "name": "Flying Tulip",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "Flying Tulip",
   "license": "MIT",
   "description": "Flying Tulip in the Omarchy bar: FT market price, 24h application fees and, for the wallets you set (shown in turn), health factor with liquidation alerts, PnL, rewards, points and ftPUT gain. Public API only.",
@@ -26,7 +26,8 @@
       "hfWarn": "1.40",
       "hfCritical": "1.30",
       "notifyCooldownMin": 30,
-      "priceChainId": 1
+      "priceChainId": 1,
+      "analytics": true
     },
     "schema": [
       {
@@ -34,7 +35,7 @@
         "type": "string",
         "label": "Wallet address (0x...)",
         "defaultValue": "",
-        "description": "Single wallet (older setting). Use the wallet editor (right click) to track several."
+        "description": "Single wallet (older setting). Use the wallet editor (right click) for several."
       },
       {
         "key": "rotateSec",

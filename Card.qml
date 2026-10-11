@@ -11,6 +11,9 @@ Rectangle {
   property bool hoverable: false
   // When set, the whole card opens this page on click (controls inside still win).
   property string url: ""
+  // which element this is, and the panel's opener (it counts the click, then opens the page); unset: just open
+  property string element: ""
+  property var opener: null
   implicitHeight: holder.childrenRect.height + pad * 2
   radius: 12
   color: fill
@@ -23,7 +26,7 @@ Rectangle {
     anchors.fill: parent
     enabled: root.url !== ""
     cursorShape: root.url !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-    onClicked: Qt.openUrlExternally(root.url)
+    onClicked: root.opener ? root.opener(root.element, root.url) : Qt.openUrlExternally(root.url)
   }
   Item {
     id: holder

@@ -23,7 +23,7 @@ BarWidget {
     var v = saved[name]
     return v !== undefined && v !== null ? v : setting(name, fallback)
   }
-  // Wallets to track (the saved list, plus the single "wallet" of 1.0.x). One is shown at a time: the bar and the
+  // Wallets to show (the saved list, plus the single "wallet" of 1.0.x). One is shown at a time: the bar and the
   // panel follow it; every rotateSec the next one is shown, except while one is low (see the rotation timer).
   readonly property var wallets: Model.walletList(effective("wallets", []), effective("wallet", ""))
   property string shown: ""
@@ -33,7 +33,7 @@ BarWidget {
   readonly property int rotateSec: Math.max(10, Number(effective("rotateSec", 60)) || 60)
   // Panel tab, kept in the state file: market | account | positions
   readonly property string tab: ["market", "account", "positions"].indexOf(String(saved.tab)) >= 0 ? String(saved.tab) : (walletValid ? "account" : "market")
-  function setTab(t) { if (String(saved.tab) !== t) writeState({ tab: t }) }
+  function setTab(t) { if (String(saved.tab) !== t) { writeState({ tab: t }); stat("Tab view", { tab: t }) } }
   readonly property int pollSec: Math.max(15, Number(effective("refreshIntervalSec", 60)) || 60)
   readonly property real hfWarn: Model.parseThreshold(effective("hfWarn", 1.40), 1.40)
   readonly property real hfCritical: Math.min(hfWarn, Model.parseThreshold(effective("hfCritical", 1.30), 1.30))
@@ -44,7 +44,7 @@ BarWidget {
 
   // ---- durable state file ------------------------------------------------------
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/flyingtulip-ft-bar"
-  readonly property var persistedKeys: ["wallets", "wallet", "rotateSec", "refreshIntervalSec", "hfWarn", "hfCritical", "notifyCooldownMin", "priceChainId"]
+  readonly property var persistedKeys: ["wallets", "wallet", "rotateSec", "analytics", "refreshIntervalSec", "hfWarn", "hfCritical", "notifyCooldownMin", "priceChainId"]
 
   FileView {
     id: stateFile
@@ -59,9 +59,52 @@ BarWidget {
       root.saved = obj
       root.stateLoaded = true
       root.migrateEntry()
+      if (!root.launchSent) { root.launchSent = true; launchTimer.start() }
     }
-    onLoadFailed: { root.saved = ({}); root.stateLoaded = true; root.migrateEntry() }
+    onLoadFailed: { root.saved = ({}); root.stateLoaded = true; root.migrateEntry(); if (!root.launchSent) { root.launchSent = true; launchTimer.start() } }
   }
+
+  // ---- anonymous usage stats (Plausible), see the README "Anonymous usage stats" ----
+  // Only the event name, platform, widget version and a few plain values (os, tab, element, url, level, endpoint, a
+  // wallet count bucket) leave the machine, by a background curl, fire and forget. Never a wallet address, balance or
+  // position. Off ("analytics": false, Advanced in the wallet editor): nothing is sent at all.
+  readonly property bool analytics: effective("analytics", true) !== false
+  property var statState: ({ hour: -1, counts: {} })
+  property var statErrAt: ({})
+  property double statPageAt: 0
+  property bool launchSent: false
+  property string osLabel: ""
+  FileView { path: "/etc/os-release"; printErrors: false; onLoaded: root.osLabel = Model.osName(text()); onLoadFailed: root.osLabel = "Linux" }
+  function stat(name, props) {
+    if (!analytics) return false
+    if (!Model.statAllowed(statState, name, Date.now())) return false
+    try { Quickshell.execDetached(Model.statArgs(Model.statBody(name, props))) } catch (e) { /* never matters */ }
+    return true
+  }
+  function sendPageview() {
+    if (stat("pageview", { os: osLabel || "Linux", host: "Quickshell", walletsConfigured: Model.walletsBucket(wallets.length) }))
+      statPageAt = Date.now()
+  }
+  // the launch pageview a moment after the settings are read, then one a day while the shell runs
+  Timer { id: launchTimer; interval: 3000; onTriggered: root.sendPageview() }
+  Timer { interval: 3600000; running: true; repeat: true; onTriggered: if (root.launchSent && Date.now() - root.statPageAt >= 86400000) root.sendPageview() }
+  // a failed or unusable answer, at most once an hour per endpoint
+  function statFetchError(path) {
+    var ep = Model.statEndpoint(path)
+    if (!ep) return
+    var t = Date.now()
+    if (t - (statErrAt[ep] || 0) < 3600000) return
+    statErrAt[ep] = t
+    stat("Fetch error", { endpoint: ep })
+  }
+  // every element that opens flyingtulip.com: count the click (its element id, the URL without any address), open it
+  function openLink(element, url) {
+    stat("Link click", { element: element, url: url })
+    Qt.openUrlExternally(url)
+  }
+  function manualNext() { if (wallets.length > 1) { stat("Wallet switch"); nextWallet() } }
+  function manualRefresh() { stat("Refresh"); refresh(); refreshSlow(true) }
+  function setAnalytics(on) { writeState({ analytics: !!on }) }
 
   // Merge `patch` into the saved settings and write the file atomically.
   function writeState(patch) {
@@ -143,13 +186,15 @@ BarWidget {
   readonly property bool opened: mode !== ""
   function open() { openInfo() }
   function close() { mode = "" }
-  function openInfo() { mode = "info"; refreshSlow() }
+  function openInfo() { mode = "info"; stat("Panel open"); refreshSlow() }
   property string editText: ""
-  function openEditor() { editText = ""; editIndex = -1; editError = ""; mode = "edit" }
+  function openEditor() { editText = ""; editIndex = -1; editError = ""; advancedOpen = false; mode = "edit"; stat("Settings open") }
+  property bool advancedOpen: false
   property int editIndex: -1      // -1: the box adds a wallet; otherwise it replaces wallets[editIndex]
 
   // ---- networking ------------------------------------------------------------
-  function getJson(path, ok, fail) {
+  function getJson(path, ok, failCb) {
+    var fail = function () { statFetchError(path); failCb() }
     var xhr = new XMLHttpRequest()
     xhr.timeout = 15000
     xhr.onreadystatechange = function () {
@@ -319,6 +364,7 @@ BarWidget {
       if (wallets.length > 1) res.notify.wallet = Model.shortAddr(w)
       var t = Model.notifyText(res.notify)
       notifyLog = notifyLog.concat([t.title + " | " + t.body])
+      stat("HF alert shown", { level: res.notify.level === 2 ? "danger" : "warning" })
       if (notificationsEnabled)
         Quickshell.execDetached(["notify-send", "-a", "Flying Tulip", "-u", t.urgency, "-i", "dialog-warning", t.title, t.body])
     }
@@ -416,12 +462,14 @@ BarWidget {
     if (editIndex >= 0 && editIndex < list.length) list.splice(editIndex, 1, p.list[0])
     else for (var i = 0; i < p.list.length; i++) if (list.indexOf(p.list[i]) < 0) list.push(p.list[i])
     var dedup = Model.parseWallets(list).list
+    if (dedup.some(function (w) { return wallets.indexOf(w) < 0 })) stat("Wallet added")
+    if (wallets.some(function (w) { return dedup.indexOf(w) < 0 })) stat("Wallet removed")
     saveWallets(dedup)
     showWallet(editIndex >= 0 ? p.list[0] : p.list[p.list.length - 1])
     editText = ""; editIndex = -1
     return true
   }
-  function removeWallet(w) { saveWallets(wallets.filter(function (x) { return x !== w })) }
+  function removeWallet(w) { stat("Wallet removed"); saveWallets(wallets.filter(function (x) { return x !== w })) }
   function editWallet(i) { editIndex = i; editText = wallets[i]; editError = "" }
   property string pendingWallet: ""
 
@@ -487,7 +535,7 @@ BarWidget {
   readonly property string nerdFont: bar ? bar.fontFamily : "monospace"
   function deltaColor(v) { return !isFinite(v) || Math.abs(v) < 0.005 ? cSub : (v > 0 ? cGreen : cRed) }
   // Open a public flyingtulip.com page in the default browser; the panel closes after.
-  function openUrl(url) { Qt.openUrlExternally(url); if (mode === "info") close() }
+  function openUrl(url, element) { stat("Link click", { element: element || "panel", url: url }); Qt.openUrlExternally(url); if (mode === "info") close() }
   readonly property string marketLink: Model.marketUrl("FT-ftUSD", priceChainId)
   function lastUpdate() { return Math.max(priceAt, feesAt, accountAt) }
   function ago(ts) {
@@ -609,9 +657,9 @@ BarWidget {
     onPositionChanged: function (m) { root.switchHovered = root.overSwitch(m.x, m.y) }
     onExited: root.switchHovered = false
     onClicked: function (m) {
-      if (m.button === Qt.LeftButton && root.overSwitch(m.x, m.y)) { root.nextWallet(); return }
+      if (m.button === Qt.LeftButton && root.overSwitch(m.x, m.y)) { root.manualNext(); return }
       if (m.button === Qt.RightButton) root.mode === "edit" ? root.close() : root.openEditor()
-      else if (m.button === Qt.MiddleButton) root.refresh()
+      else if (m.button === Qt.MiddleButton) root.manualRefresh()
       else if (!root.walletValid && root.mode === "") root.openInfo()
       else root.mode === "info" ? root.close() : root.openInfo()
     }
@@ -794,6 +842,37 @@ BarWidget {
             Text { anchors.centerIn: parent; text: "Done"; color: root.cSub; font.family: root.fam; font.pixelSize: 12 }
             MouseArea { id: cancelMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.editIndex = -1; root.close() } }
           }
+        }
+
+        // Advanced settings, folded away
+        Rectangle { width: parent.width; height: 1; color: root.cBorder }
+        Text {
+          textFormat: Text.PlainText
+          text: (root.advancedOpen ? "▾ " : "▸ ") + "Advanced settings"
+          color: advMa.containsMouse ? root.cTulip300 : root.cSub
+          font.family: root.fam; font.pixelSize: 11
+          MouseArea { id: advMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.advancedOpen = !root.advancedOpen }
+        }
+        Row {
+          visible: root.advancedOpen
+          spacing: 10
+          Text { anchors.verticalCenter: parent.verticalCenter; textFormat: Text.PlainText; text: "Anonymous usage stats"; color: root.cText; font.family: root.fam; font.pixelSize: 12 }
+          Rectangle {
+            width: 52; height: 24; radius: 12
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.analytics ? Qt.rgba(117 / 255, 89 / 255, 255, 0.35) : "transparent"
+            border.width: 1; border.color: root.analytics ? root.cTulip : root.cBorder
+            Text { anchors.centerIn: parent; text: root.analytics ? "On" : "Off"; color: root.analytics ? root.cTulip300 : root.cSub; font.family: root.fam; font.pixelSize: 11; font.weight: Font.DemiBold }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setAnalytics(!root.analytics) }
+          }
+        }
+        Text {
+          visible: root.advancedOpen
+          width: parent.width
+          wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
+          text: "Counts launches, panel opens, tabs and links used, with the platform and version. Never a wallet, balance or position."
+          color: root.cFaint; font.family: root.fam; font.pixelSize: 10
         }
       }
     }

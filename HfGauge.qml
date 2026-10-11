@@ -1,6 +1,6 @@
 import QtQuick
 
-// One chain's HF: name, track with fill (green/amber/red), the 1.25 liquidation line, value.
+// One chain's HF: name, a bar with fill (green/amber/red), the 1.25 liquidation line, value.
 Item {
   id: root
   property string name: ""
@@ -23,11 +23,11 @@ Item {
   Behavior on fillW { NumberAnimation { duration: 480; easing.type: Easing.OutCubic } }
   Component.onCompleted: fillW = xAt(shown)
 
-  function xAt(v) { return Math.max(0, Math.min(1, (v - 1.0) / (scaleMax - 1.0))) * track.width }
+  function xAt(v) { return Math.max(0, Math.min(1, (v - 1.0) / (scaleMax - 1.0))) * gaugeBar.width }
 
   Text { id: label; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 66; text: root.name; textFormat: Text.PlainText; color: root.textColor; font.family: root.fontFamilies; font.pixelSize: 11; elide: Text.ElideRight }
   Rectangle {
-    id: track
+    id: gaugeBar
     anchors.left: label.right
     anchors.right: value.left
     anchors.rightMargin: 10

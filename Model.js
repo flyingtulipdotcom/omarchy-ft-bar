@@ -291,7 +291,7 @@ function parseWallets(v) {
   }
   return { list: list, bad: bad }
 }
-// The wallets to track: the saved list, then the single wallet of 1.0.x when it is not in it.
+// The wallets to show: the saved list, then the single wallet of 1.0.x when it is not in it.
 function walletList(saved, legacy) {
   var a = parseWallets(saved).list, b = parseWallets(legacy).list
   for (var i = 0; i < b.length; i++) if (a.indexOf(b[i]) < 0) a.push(b[i])
@@ -535,7 +535,56 @@ function parseThreshold(v, fallback) {
   return isFinite(n) && n > 1 ? n : fallback
 }
 
+// ---- anonymous usage stats (Plausible), see the README ------------------------
+// Only the event name, the platform, the widget version and the few values the widget passes (os, host, tab,
+// element, url, level, endpoint, a wallet count bucket) are sent. Never a wallet address, balance or position: any
+// 0x address in a value becomes ":address". The widget sends nothing while "analytics" is false.
+var WIDGET_VERSION = "1.2.0"
+var STATS_ENDPOINT = "https://plausible.io/api/event"
+var STATS_UA = "Mozilla/5.0 (X11; Linux x86_64) FlyingTulipWidget/" + WIDGET_VERSION
+var STAT_CAP = 30
+function statValue(v) { return String(v).replace(/0x[0-9a-fA-F]{40}/g, ":address").slice(0, 300) }
+function statBody(name, props) {
+  var p = { platform: "omarchy", version: WIDGET_VERSION }
+  for (var k in (props || {})) p[k] = statValue(props[k])
+  return JSON.stringify({ name: name, url: "app://widget/omarchy", domain: "widget", props: p })
+}
+// curl in the background (Quickshell.execDetached): fire and forget, 10 s at most
+function statArgs(body) {
+  return ["curl", "-s", "-m", "10", "-o", "/dev/null", "-X", "POST", STATS_ENDPOINT,
+    "-H", "Content-Type: application/json", "-A", STATS_UA, "-d", body]
+}
+// state = {hour, counts}: at most STAT_CAP events of one name per hour. Returns true when this one may go.
+function statAllowed(state, name, nowMs) {
+  var hour = Math.floor(nowMs / 3600000)
+  if (state.hour !== hour) { state.hour = hour; state.counts = {} }
+  var c = state.counts[name] || 0
+  if (c >= STAT_CAP) return false
+  state.counts[name] = c + 1
+  return true
+}
+function walletsBucket(n) { return n >= 3 ? "3+" : String(n) }
+// "Arch Linux", "Ubuntu 24" ... from /etc/os-release
+function osName(text) {
+  var t = String(text || ""), name = (t.match(/^NAME="?([^"\n]+)"?/m) || [])[1] || "Linux"
+  var ver = (t.match(/^VERSION_ID="?(\d+)/m) || [])[1]
+  return ver ? name + " " + ver : name
+}
+// API path -> short endpoint name for "Fetch error" (Monad's chainId=143 reads are left out: not served everywhere)
+function statEndpoint(path) {
+  var p = String(path || "")
+  if (/chainId=143/.test(p)) return ""
+  var table = [[/^\/mm\/spot\/tickers/, "ticker"], [/^\/fees\//, "fees"], [/klines/, "klines"], [/^\/mm\/lend/, "lend"],
+    [/account\/summary/, "summary"], [/account\/positions/, "positions"], [/account\/dashboard/, "rewards"],
+    [/rewards\/history/, "rewards-history"], [/^\/points\/leaderboard/, "leaderboard"], [/^\/points\/breakdown/, "points-breakdown"],
+    [/^\/points/, "points"], [/^\/tge\/ftPUT/, "ftput"]]
+  for (var i = 0; i < table.length; i++) if (table[i][0].test(p)) return table[i][1]
+  return "other"
+}
+
 if (typeof module !== "undefined") module.exports = {
+  WIDGET_VERSION: WIDGET_VERSION, STATS_UA: STATS_UA, statBody: statBody, statArgs: statArgs, statAllowed: statAllowed,
+  walletsBucket: walletsBucket, osName: osName, statEndpoint: statEndpoint, statValue: statValue,
   parseWallets: parseWallets, walletList: walletList,
   SITE: SITE, PAGES: PAGES, marketUrl: marketUrl,
   parseFees: parseFees, parsePrice: parsePrice, parseLend: parseLend, parseSummary: parseSummary,
